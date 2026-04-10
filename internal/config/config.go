@@ -23,14 +23,17 @@ type Config struct {
 
 // TranscribeConfig holds configuration for audio transcription providers.
 type TranscribeConfig struct {
-	Provider     string `toml:"provider"`
-	APIKey       string `toml:"api_key"`
-	Model        string `toml:"model"`
-	Language     string `toml:"language"`
-	MaxAudioSize int64  `toml:"max_audio_size"`
-	BinaryPath   string `toml:"binary_path"`
-	ModelPath    string `toml:"model_path"`
-	Timeout      int    `toml:"timeout"`
+	Provider           string  `toml:"provider"`
+	APIKey             string  `toml:"api_key"`
+	Model              string  `toml:"model"`
+	Language           string  `toml:"language"`
+	MaxAudioSize       int64   `toml:"max_audio_size"`
+	BinaryPath         string  `toml:"binary_path"`
+	ModelPath          string  `toml:"model_path"`
+	Timeout            int     `toml:"timeout"`
+	NoSpeechThreshold  float64 `toml:"no_speech_threshold"`
+	CacheTTL           int     `toml:"cache_ttl"`
+	Debug              bool    `toml:"debug"`
 }
 
 type KapsoConfig struct {
@@ -98,9 +101,12 @@ func defaults() Config {
 			DefaultRole:      "member",
 		},
 		Transcribe: TranscribeConfig{
-			MaxAudioSize: 25 * 1024 * 1024, // 25MB
-			BinaryPath:   "whisper-cli",
-			Timeout:      30,
+			MaxAudioSize:      25 * 1024 * 1024, // 25MB
+			BinaryPath:        "whisper-cli",
+			Timeout:           30,
+			NoSpeechThreshold: 0.85,
+			CacheTTL:          3600,
+			Debug:             false,
 		},
 	}
 }
@@ -251,6 +257,19 @@ func applyEnv(cfg *Config) {
 	if v := os.Getenv("KAPSO_TRANSCRIBE_MODEL_PATH"); v != "" {
 		cfg.Transcribe.ModelPath = v
 	}
+	if v := os.Getenv("KAPSO_TRANSCRIBE_DEBUG"); v != "" {
+		cfg.Transcribe.Debug = v == "true"
+	}
+	if v := os.Getenv("KAPSO_TRANSCRIBE_NO_SPEECH_THRESHOLD"); v != "" {
+		if f, err := strconv.ParseFloat(v, 64); err == nil {
+			cfg.Transcribe.NoSpeechThreshold = f
+		}
+	}
+	if v := os.Getenv("KAPSO_TRANSCRIBE_CACHE_TTL"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil {
+			cfg.Transcribe.CacheTTL = n
+		}
+	}
 }
 
 // resolveMode normalises the delivery mode from KAPSO_MODE (preferred) or
@@ -322,6 +341,9 @@ func (c *Config) Validate() error {
 	// Transcribe validation: reset MaxAudioSize if zero or negative (guards TOML zero-value masking).
 	if c.Transcribe.MaxAudioSize <= 0 {
 		c.Transcribe.MaxAudioSize = 25 * 1024 * 1024
+	}
+	if c.Transcribe.CacheTTL <= 0 {
+		c.Transcribe.CacheTTL = 3600
 	}
 
 	return nil
