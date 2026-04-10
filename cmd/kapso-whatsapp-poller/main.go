@@ -21,6 +21,7 @@ import (
 	"github.com/Enriquefft/openclaw-kapso-whatsapp/internal/relay"
 	"github.com/Enriquefft/openclaw-kapso-whatsapp/internal/security"
 	"github.com/Enriquefft/openclaw-kapso-whatsapp/internal/tailscale"
+	"github.com/Enriquefft/openclaw-kapso-whatsapp/internal/transcribe"
 )
 
 func main() {
@@ -31,6 +32,14 @@ func main() {
 	if err := cfg.Validate(); err != nil {
 		log.Fatalf("invalid config: %v", err)
 	}
+
+	// Build transcriber from config (nil when disabled, fatal on misconfiguration).
+	transcriber, err := transcribe.New(cfg.Transcribe)
+	if err != nil {
+		log.Fatalf("transcription config error: %v", err)
+	}
+	// transcriber is nil when no provider is configured — Phase 3 will pass it to delivery layer.
+	_ = transcriber
 
 	if cfg.Kapso.APIKey == "" || cfg.Kapso.PhoneNumberID == "" {
 		log.Fatal("KAPSO_API_KEY and KAPSO_PHONE_NUMBER_ID must be set")
