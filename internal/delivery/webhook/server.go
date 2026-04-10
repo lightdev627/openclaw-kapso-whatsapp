@@ -20,8 +20,9 @@ import (
 )
 
 // Server is an HTTP webhook receiver that implements delivery.Source.
-// It receives Meta-format WhatsApp webhook events from Kapso and emits
-// delivery.Event for ALL message types (text, image, document, audio, video, location).
+// It receives both Kapso-native and Meta-format WhatsApp webhook events
+// and emits delivery.Event for ALL message types (text, image, document,
+// audio, video, location).
 type Server struct {
 	Addr         string
 	VerifyToken  string
@@ -96,7 +97,47 @@ func (s *Server) handleVerification(w http.ResponseWriter, r *http.Request) {
 	http.Error(w, "verification failed", http.StatusForbidden)
 }
 
-// handleEvent parses a webhook POST and emits events for ALL inbound message types.
+// webhookFormat identifies whether the incoming JSON is Kapso native or Meta format.
+type webhookFormat int
+
+const (
+	formatUnknown webhookFormat = iota
+	formatMeta
+	formatKapso
+)
+
+// detectFormat peeks at the JSON to determine webhook format.
+// Kapso native has "type" at top level; Meta has "object" and "entry".
+func detectFormat(body []byte) webhookFormat {
+	var probe struct {
+		Type   string `json:"type"`
+		Object string `json:"object"`
+	}
+	if err := json.Unmarshal(body, &probe); err != nil {
+		return formatUnknown
+	}
+	if probe.Type != "" {
+		return formatKapso
+	}
+	if probe.Object != "" {
+		return formatMeta
+	}
+	return formatUnknown
+}
+
+func formatName(f webhookFormat) string {
+	switch f {
+	case formatKapso:
+		return "kapso-native"
+	case formatMeta:
+		return "meta"
+	default:
+		return "unknown"
+	}
+}
+
+// handleEvent parses a webhook POST, detects the payload format (Kapso native
+// or Meta), and emits events for inbound messages.
 func (s *Server) handleEvent(w http.ResponseWriter, r *http.Request, out chan<- delivery.Event) {
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
@@ -105,24 +146,38 @@ func (s *Server) handleEvent(w http.ResponseWriter, r *http.Request, out chan<- 
 	}
 
 	// Validate HMAC signature if app secret is configured.
+	// Supports both Kapso (X-Webhook-Signature) and Meta (X-Hub-Signature-256).
 	if s.AppSecret != "" {
-		sig := r.Header.Get("X-Hub-Signature-256")
-		if !validSignature(body, sig, s.AppSecret) {
+		if !validateSignature(r.Header, body, s.AppSecret) {
 			log.Printf("webhook: invalid signature")
 			http.Error(w, "invalid signature", http.StatusUnauthorized)
 			return
 		}
 	}
 
-	var payload kapso.WebhookPayload
-	if err := json.Unmarshal(body, &payload); err != nil {
-		log.Printf("webhook: invalid JSON: %v", err)
-		http.Error(w, "invalid JSON", http.StatusBadRequest)
-		return
-	}
+	format := detectFormat(body)
+	log.Printf("webhook: detected %s format", formatName(format))
 
 	// Acknowledge immediately — process asynchronously.
 	w.WriteHeader(http.StatusOK)
+
+	switch format {
+	case formatKapso:
+		s.handleKapsoPayload(body, out)
+	case formatMeta:
+		s.handleMetaPayload(body, out)
+	default:
+		log.Printf("webhook: unrecognized payload format, ignoring")
+	}
+}
+
+// handleMetaPayload processes a Meta-format webhook payload.
+func (s *Server) handleMetaPayload(body []byte, out chan<- delivery.Event) {
+	var payload kapso.WebhookPayload
+	if err := json.Unmarshal(body, &payload); err != nil {
+		log.Printf("webhook: invalid Meta JSON: %v", err)
+		return
+	}
 
 	for _, entry := range payload.Entry {
 		for _, change := range entry.Changes {
@@ -137,39 +192,79 @@ func (s *Server) handleEvent(w http.ResponseWriter, r *http.Request, out chan<- 
 			}
 
 			for _, msg := range change.Value.Messages {
-				text, ok := delivery.ExtractText(msg, s.Client, s.Transcriber, s.MaxAudioSize)
-				if !ok {
-					continue
-				}
-
-				name := ""
-				if msg.Kapso != nil && msg.Kapso.ContactName != "" {
-					name = msg.Kapso.ContactName
-				} else {
-					name = contacts[msg.From]
-				}
-				out <- delivery.Event{
-					ID:   msg.ID,
-					From: msg.From,
-					Name: name,
-					Text: text,
-				}
-				log.Printf("webhook: received message %s from %s", msg.ID, msg.From)
+				s.emitMessage(msg, contacts, out)
 			}
 		}
 	}
 }
 
-// validSignature checks the X-Hub-Signature-256 HMAC.
-func validSignature(body []byte, header, secret string) bool {
-	if header == "" {
+// handleKapsoPayload processes a Kapso-native webhook payload.
+func (s *Server) handleKapsoPayload(body []byte, out chan<- delivery.Event) {
+	var payload kapso.KapsoWebhookPayload
+	if err := json.Unmarshal(body, &payload); err != nil {
+		log.Printf("webhook: invalid Kapso JSON: %v", err)
+		return
+	}
+
+	// Only process message-received events; ignore status updates.
+	if payload.Type != "whatsapp.message.received" {
+		log.Printf("webhook: ignoring Kapso event type %q", payload.Type)
+		return
+	}
+
+	for _, item := range payload.Data {
+		s.emitMessage(item.Message, nil, out)
+	}
+}
+
+// emitMessage extracts text from a message and emits it as a delivery.Event.
+// contacts is an optional Meta-format contact-name lookup (nil for Kapso native).
+func (s *Server) emitMessage(msg kapso.Message, contacts map[string]string, out chan<- delivery.Event) {
+	text, ok := delivery.ExtractText(msg, s.Client, s.Transcriber, s.MaxAudioSize)
+	if !ok {
+		return
+	}
+
+	name := ""
+	if msg.Kapso != nil && msg.Kapso.ContactName != "" {
+		name = msg.Kapso.ContactName
+	} else if contacts != nil {
+		name = contacts[msg.From]
+	}
+
+	out <- delivery.Event{
+		ID:   msg.ID,
+		From: msg.From,
+		Name: name,
+		Text: text,
+	}
+	log.Printf("webhook: received message %s from %s", msg.ID, msg.From)
+}
+
+// validateSignature checks HMAC-SHA256 for either Kapso or Meta webhook format.
+// Kapso: X-Webhook-Signature header, raw hex.
+// Meta:  X-Hub-Signature-256 header, "sha256=" prefixed hex.
+func validateSignature(headers http.Header, body []byte, secret string) bool {
+	// Try Kapso header first.
+	if sig := headers.Get("X-Webhook-Signature"); sig != "" {
+		return hmacValid(body, sig, secret)
+	}
+	// Fall back to Meta header.
+	if sig := headers.Get("X-Hub-Signature-256"); sig != "" {
+		return hmacValid(body, strings.TrimPrefix(sig, "sha256="), secret)
+	}
+	return false
+}
+
+// hmacValid checks if the hex-encoded HMAC-SHA256 of body matches expected.
+func hmacValid(body []byte, hexSig, secret string) bool {
+	if hexSig == "" {
 		return false
 	}
-	sig := strings.TrimPrefix(header, "sha256=")
 	mac := hmac.New(sha256.New, []byte(secret))
 	mac.Write(body)
 	expected := hex.EncodeToString(mac.Sum(nil))
-	return hmac.Equal([]byte(sig), []byte(expected))
+	return hmac.Equal([]byte(hexSig), []byte(expected))
 }
 
 // handleHealth returns 200 OK — used by the CLI status command.
