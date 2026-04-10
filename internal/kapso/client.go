@@ -103,7 +103,7 @@ func (c *Client) SendTypingIndicator(to string) error {
 	}
 	defer resp.Body.Close()
 
-	io.Copy(io.Discard, resp.Body)
+	_, _ = io.Copy(io.Discard, resp.Body)
 
 	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated {
 		return fmt.Errorf("typing indicator error (status %d)", resp.StatusCode)
