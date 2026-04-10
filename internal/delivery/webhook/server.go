@@ -142,7 +142,12 @@ func (s *Server) handleEvent(w http.ResponseWriter, r *http.Request, out chan<- 
 					continue
 				}
 
-				name := contacts[msg.From]
+				name := ""
+				if msg.Kapso != nil && msg.Kapso.ContactName != "" {
+					name = msg.Kapso.ContactName
+				} else {
+					name = contacts[msg.From]
+				}
 				out <- delivery.Event{
 					ID:   msg.ID,
 					From: msg.From,

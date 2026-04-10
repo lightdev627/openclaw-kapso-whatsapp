@@ -77,24 +77,7 @@ func TestExtractText_Image(t *testing.T) {
 	}
 }
 
-func TestExtractText_ImageWithMediaURL(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		_ = json.NewEncoder(w).Encode(kapso.MediaResponse{
-			URL:      "https://example.com/media/photo.jpg",
-			MimeType: "image/jpeg",
-			ID:       "media-123",
-		})
-	}))
-	defer srv.Close()
-
-	client := &kapso.Client{
-		APIKey:        "test-key",
-		PhoneNumberID: "12345",
-		HTTPClient: &http.Client{
-			Transport: &rewriteTransport{base: srv.URL, wrapped: http.DefaultTransport},
-		},
-	}
-
+func TestExtractText_ImageWithKapsoMediaURL(t *testing.T) {
 	msg := kapso.Message{
 		ID:   "m3b",
 		Type: "image",
@@ -104,12 +87,16 @@ func TestExtractText_ImageWithMediaURL(t *testing.T) {
 			MimeType: "image/jpeg",
 			Caption:  "sunset",
 		},
+		Kapso: &kapso.KapsoMeta{
+			HasMedia: true,
+			MediaURL: "https://api.kapso.ai/media/photo.jpg",
+		},
 	}
-	text, ok := ExtractText(msg, client, nil, 0)
+	text, ok := ExtractText(msg, nil, nil, 0)
 	if !ok {
 		t.Fatal("expected ok=true for image message")
 	}
-	if !strings.Contains(text, "https://example.com/media/photo.jpg") {
+	if !strings.Contains(text, "https://api.kapso.ai/media/photo.jpg") {
 		t.Errorf("expected media URL in %q", text)
 	}
 }
@@ -286,7 +273,7 @@ func TestExtractText_NilMediaContent(t *testing.T) {
 }
 
 func TestFormatMediaMessage_AllParts(t *testing.T) {
-	text := formatMediaMessage("image", "my photo", "image/png", "", nil)
+	text := formatMediaMessage("image", "my photo", "image/png", nil)
 	want := "[image] my photo (image/png)"
 	if text != want {
 		t.Fatalf("got %q, want %q", text, want)
@@ -294,10 +281,18 @@ func TestFormatMediaMessage_AllParts(t *testing.T) {
 }
 
 func TestFormatMediaMessage_NoLabel(t *testing.T) {
-	text := formatMediaMessage("audio", "", "audio/ogg", "", nil)
+	text := formatMediaMessage("audio", "", "audio/ogg", nil)
 	want := "[audio] (audio/ogg)"
 	if text != want {
 		t.Fatalf("got %q, want %q", text, want)
+	}
+}
+
+func TestFormatMediaMessage_WithKapsoURL(t *testing.T) {
+	k := &kapso.KapsoMeta{MediaURL: "https://api.kapso.ai/media/file.jpg"}
+	text := formatMediaMessage("image", "photo", "image/jpeg", k)
+	if !strings.Contains(text, "https://api.kapso.ai/media/file.jpg") {
+		t.Errorf("expected media URL in %q", text)
 	}
 }
 
@@ -335,121 +330,114 @@ func TestFormatLocationMessage_Minimal(t *testing.T) {
 	}
 }
 
-// TestExtractText_AudioTranscription tests the transcription branch of ExtractText.
-// A test HTTP server handles two request patterns:
-//   - GET /{mediaID}        — returns MediaResponse JSON with download URL
-//   - GET /download/{mediaID} — returns raw audio bytes
-func TestExtractText_AudioTranscription(t *testing.T) {
-	const audioMediaID = "audio-media-001"
+// TestExtractText_AudioServerTranscript tests that server-side transcription
+// from Kapso is preferred over local transcription.
+func TestExtractText_AudioServerTranscript(t *testing.T) {
+	msg := kapso.Message{
+		ID:   "audio-server-001",
+		Type: "audio",
+		From: "+1234567890",
+		Audio: &kapso.AudioContent{
+			ID:       "media-audio-001",
+			MimeType: "audio/ogg",
+		},
+		Kapso: &kapso.KapsoMeta{
+			HasMedia: true,
+			MediaURL: "https://api.kapso.ai/media/voice.ogg",
+			Transcript: &kapso.Transcript{
+				Text: "Hello, I need help with my order",
+			},
+		},
+	}
+
+	// Even with a local transcriber configured, server-side transcript wins.
+	text, ok := ExtractText(msg, nil, &mockTranscriber{text: "local result"}, 1024*1024)
+	if !ok {
+		t.Fatal("expected ok=true")
+	}
+	want := "[voice] Hello, I need help with my order"
+	if text != want {
+		t.Fatalf("got %q, want %q", text, want)
+	}
+}
+
+// TestExtractText_AudioLocalTranscription tests local transcription via
+// DownloadMedia when no server-side transcript is available.
+func TestExtractText_AudioLocalTranscription(t *testing.T) {
 	const rawAudio = "fake-audio-bytes"
 
-	// newTestServer creates a server that handles both media URL and download requests.
-	// If mediaURLStatus != 200, the media URL endpoint returns that error status.
-	// If downloadStatus != 200, the download endpoint returns that error status.
-	newTestServer := func(mediaURLStatus, downloadStatus int) *httptest.Server {
-		return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			if strings.HasPrefix(r.URL.Path, "/download/") {
-				if downloadStatus != http.StatusOK {
-					http.Error(w, "download error", downloadStatus)
-					return
-				}
-				w.WriteHeader(http.StatusOK)
-				_, _ = w.Write([]byte(rawAudio))
-				return
-			}
-			// Media URL endpoint — everything else.
-			if mediaURLStatus != http.StatusOK {
-				http.Error(w, "media url error", mediaURLStatus)
-				return
-			}
-			// Return a MediaResponse with the download URL pointing to this server.
-			// We need the server URL but it's not available yet during construction,
-			// so we build the URL dynamically from the request host.
-			downloadURL := "http://" + r.Host + "/download/" + audioMediaID
-			_ = json.NewEncoder(w).Encode(kapso.MediaResponse{
-				URL:      downloadURL,
-				MimeType: "audio/ogg",
-				ID:       audioMediaID,
-			})
-		}))
+	// Test server serves audio download.
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(rawAudio))
+	}))
+	defer srv.Close()
+
+	client := &kapso.Client{
+		APIKey:        "test-key",
+		PhoneNumberID: "12345",
+		HTTPClient: &http.Client{
+			Transport: &rewriteTransport{base: srv.URL, wrapped: http.DefaultTransport},
+		},
 	}
 
 	tests := []struct {
-		name           string
-		transcriber    transcribe.Transcriber
-		mediaURLStatus int
-		downloadStatus int
-		wantPrefix     string
-		wantOK         bool
+		name        string
+		transcriber transcribe.Transcriber
+		kapso       *kapso.KapsoMeta
+		wantPrefix  string
 	}{
 		{
-			name:           "success",
-			transcriber:    &mockTranscriber{text: "hello world", err: nil},
-			mediaURLStatus: http.StatusOK,
-			downloadStatus: http.StatusOK,
-			wantPrefix:     "[voice] hello world",
-			wantOK:         true,
+			name:        "success",
+			transcriber: &mockTranscriber{text: "hello world", err: nil},
+			kapso: &kapso.KapsoMeta{
+				HasMedia: true,
+				MediaURL: "https://api.kapso.ai/media/voice.ogg",
+			},
+			wantPrefix: "[voice] hello world",
 		},
 		{
-			name:           "transcription_error",
-			transcriber:    &mockTranscriber{text: "", err: fmt.Errorf("mock error")},
-			mediaURLStatus: http.StatusOK,
-			downloadStatus: http.StatusOK,
-			wantPrefix:     "[audio]",
-			wantOK:         true,
+			name:        "transcription_error_falls_back",
+			transcriber: &mockTranscriber{text: "", err: fmt.Errorf("mock error")},
+			kapso: &kapso.KapsoMeta{
+				HasMedia: true,
+				MediaURL: "https://api.kapso.ai/media/voice.ogg",
+			},
+			wantPrefix: "[audio]",
 		},
 		{
-			name:           "nil_transcriber",
-			transcriber:    nil,
-			mediaURLStatus: http.StatusOK,
-			downloadStatus: http.StatusOK,
-			wantPrefix:     "[audio]",
-			wantOK:         true,
+			name:        "nil_transcriber_falls_back",
+			transcriber: nil,
+			kapso: &kapso.KapsoMeta{
+				HasMedia: true,
+				MediaURL: "https://api.kapso.ai/media/voice.ogg",
+			},
+			wantPrefix: "[audio]",
 		},
 		{
-			name:           "media_url_error",
-			transcriber:    &mockTranscriber{text: "hello", err: nil},
-			mediaURLStatus: http.StatusInternalServerError,
-			downloadStatus: http.StatusOK,
-			wantPrefix:     "[audio]",
-			wantOK:         true,
-		},
-		{
-			name:           "download_error",
-			transcriber:    &mockTranscriber{text: "hello", err: nil},
-			mediaURLStatus: http.StatusOK,
-			downloadStatus: http.StatusInternalServerError,
-			wantPrefix:     "[audio]",
-			wantOK:         true,
+			name:        "no_media_url_falls_back",
+			transcriber: &mockTranscriber{text: "hello", err: nil},
+			kapso:       nil,
+			wantPrefix:  "[audio]",
 		},
 	}
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			srv := newTestServer(tc.mediaURLStatus, tc.downloadStatus)
-			defer srv.Close()
-
-			client := &kapso.Client{
-				APIKey:        "test-key",
-				PhoneNumberID: "12345",
-				HTTPClient: &http.Client{
-					Transport: &rewriteTransport{base: srv.URL, wrapped: http.DefaultTransport},
-				},
-			}
-
 			msg := kapso.Message{
 				ID:   "audio-msg-001",
 				Type: "audio",
 				From: "+1234567890",
 				Audio: &kapso.AudioContent{
-					ID:       audioMediaID,
+					ID:       "audio-media-001",
 					MimeType: "audio/ogg",
 				},
+				Kapso: tc.kapso,
 			}
 
 			text, ok := ExtractText(msg, client, tc.transcriber, 1024*1024)
-			if ok != tc.wantOK {
-				t.Fatalf("ok=%v, want %v", ok, tc.wantOK)
+			if !ok {
+				t.Fatal("expected ok=true")
 			}
 			if !strings.HasPrefix(text, tc.wantPrefix) {
 				t.Errorf("text=%q, want prefix %q", text, tc.wantPrefix)

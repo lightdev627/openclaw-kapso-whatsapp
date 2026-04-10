@@ -23,18 +23,10 @@ type ListMessagesResponse struct {
 }
 
 // InboundMessage represents a message from the list API.
-// It embeds Message to promote shared fields (ID, From, Type, Text, Image, etc.).
+// It embeds Message to promote shared fields (ID, From, Type, Text, Image, Kapso, etc.).
 type InboundMessage struct {
-	Message            // promotes ID, From, Type, Text, Image, etc.
-	To      string     `json:"to,omitempty"`
-	Kapso   *KapsoMeta `json:"kapso,omitempty"`
-}
-
-// KapsoMeta contains Kapso-enhanced metadata.
-type KapsoMeta struct {
-	Direction   string `json:"direction"`
-	Status      string `json:"status"`
-	ContactName string `json:"contact_name"`
+	Message        // promotes ID, From, Type, Text, Image, Kapso, etc.
+	To      string `json:"to,omitempty"`
 }
 
 // Paging contains cursor-based pagination info.

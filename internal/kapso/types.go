@@ -47,6 +47,8 @@ type ContactProfile struct {
 }
 
 // Message represents an incoming WhatsApp message.
+// The Kapso field contains enrichment metadata provided by both the polling
+// list API and the webhook API (media URLs, server-side transcripts, etc.).
 type Message struct {
 	From      string           `json:"from"`
 	ID        string           `json:"id"`
@@ -59,6 +61,32 @@ type Message struct {
 	Video     *VideoContent    `json:"video,omitempty"`
 	Sticker   *StickerContent  `json:"sticker,omitempty"`
 	Location  *LocationContent `json:"location,omitempty"`
+	Kapso     *KapsoMeta       `json:"kapso,omitempty"`
+}
+
+// KapsoMeta contains Kapso-enhanced metadata present in both polling and
+// webhook message payloads.
+type KapsoMeta struct {
+	Direction   string      `json:"direction"`
+	Status      string      `json:"status"`
+	ContactName string      `json:"contact_name"`
+	HasMedia    bool        `json:"has_media,omitempty"`
+	MediaURL    string      `json:"media_url,omitempty"`
+	MediaData   *MediaData  `json:"media_data,omitempty"`
+	Transcript  *Transcript `json:"transcript,omitempty"`
+}
+
+// MediaData contains media attachment details from the Kapso API.
+type MediaData struct {
+	URL         string `json:"url"`
+	Filename    string `json:"filename"`
+	ContentType string `json:"content_type"`
+	ByteSize    int64  `json:"byte_size"`
+}
+
+// Transcript contains server-side transcription provided by Kapso for audio messages.
+type Transcript struct {
+	Text string `json:"text"`
 }
 
 // TextContent holds a text message body.
@@ -119,15 +147,6 @@ type Status struct {
 	Status      string `json:"status"`
 	Timestamp   string `json:"timestamp"`
 	RecipientID string `json:"recipient_id"`
-}
-
-// MediaResponse is the response when retrieving media metadata from the API.
-type MediaResponse struct {
-	URL      string `json:"url"`
-	MimeType string `json:"mime_type"`
-	SHA256   string `json:"sha256"`
-	FileSize int64  `json:"file_size"`
-	ID       string `json:"id"`
 }
 
 // SendMessageRequest is the payload for sending a text message via Kapso.
