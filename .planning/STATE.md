@@ -10,28 +10,28 @@ See: .planning/PROJECT.md (updated 2026-03-01)
 ## Current Position
 
 Phase: 1 of 4 (Foundation)
-Plan: 0 of 2 in current phase
-Status: Ready to plan
-Last activity: 2026-03-01 — Roadmap created, phases derived from requirements
+Plan: 1 of 2 in current phase
+Status: In progress
+Last activity: 2026-03-01 — Plan 01-01 complete: TranscribeConfig struct, defaults, env overrides, validation
 
-Progress: [░░░░░░░░░░] 0%
+Progress: [█░░░░░░░░░] 13%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 0
-- Average duration: -
-- Total execution time: 0 hours
+- Total plans completed: 1
+- Average duration: 2min
+- Total execution time: ~0.03 hours
 
 **By Phase:**
 
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
-| - | - | - | - |
+| 01-foundation | 1 | 2min | 2min |
 
 **Recent Trend:**
-- Last 5 plans: -
-- Trend: -
+- Last 5 plans: 01-01 (2min)
+- Trend: Baseline established
 
 *Updated after each plan completion*
 
@@ -46,6 +46,9 @@ Recent decisions affecting current work:
 - [Pre-work]: [voice] prefix on transcribed text distinguishes it from typed text in the relay pipeline
 - [Pre-work]: Graceful fallback to [audio] (mime) — transcription failure must never cause message loss
 - [Pre-work]: No Google Cloud STT — avoids heavy SDK, inconsistent with minimal deps principle
+- [01-01]: MaxAudioSize validated non-zero in Validate() to guard TOML zero-value masking defaults
+- [01-01]: Provider env var auto-lowercased in applyEnv() for case-insensitive user input
+- [01-01]: Empty provider is valid config state — transcription disabled by default, not an error
 
 ### Pending Todos
 
@@ -61,5 +64,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-03-01
-Stopped at: Roadmap created — ready to begin Phase 1 planning
+Stopped at: Completed 01-01-PLAN.md — TranscribeConfig config section done
 Resume file: None

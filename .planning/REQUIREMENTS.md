@@ -38,11 +38,11 @@ Requirements for voice transcription milestone. Each maps to roadmap phases.
 
 ### Configuration
 
-- [ ] **CONF-01**: `[transcribe]` TOML section with provider, api_key, model, language, max_audio_size
-- [ ] **CONF-02**: Env overrides: `TRANSCRIBE_PROVIDER`, `TRANSCRIBE_API_KEY`, `TRANSCRIBE_MODEL`, `TRANSCRIBE_LANGUAGE`
-- [ ] **CONF-03**: 3-tier precedence preserved: defaults < file < env
-- [ ] **CONF-04**: Empty/missing provider = transcription disabled (backward compatible, zero behavior change)
-- [ ] **CONF-05**: Default language support for Spanish and English (language hint configurable, auto-detect when empty)
+- [x] **CONF-01**: `[transcribe]` TOML section with provider, api_key, model, language, max_audio_size
+- [x] **CONF-02**: Env overrides: `TRANSCRIBE_PROVIDER`, `TRANSCRIBE_API_KEY`, `TRANSCRIBE_MODEL`, `TRANSCRIBE_LANGUAGE`
+- [x] **CONF-03**: 3-tier precedence preserved: defaults < file < env
+- [x] **CONF-04**: Empty/missing provider = transcription disabled (backward compatible, zero behavior change)
+- [x] **CONF-05**: Default language support for Spanish and English (language hint configurable, auto-detect when empty)
 
 ### Infrastructure
 
@@ -93,11 +93,11 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| CONF-01 | Phase 1 | Pending |
-| CONF-02 | Phase 1 | Pending |
-| CONF-03 | Phase 1 | Pending |
-| CONF-04 | Phase 1 | Pending |
-| CONF-05 | Phase 1 | Pending |
+| CONF-01 | Phase 1 | Complete (01-01) |
+| CONF-02 | Phase 1 | Complete (01-01) |
+| CONF-03 | Phase 1 | Complete (01-01) |
+| CONF-04 | Phase 1 | Complete (01-01) |
+| CONF-05 | Phase 1 | Complete (01-01) |
 | TRNS-01 | Phase 1 | Pending |
 | MEDL-01 | Phase 1 | Pending |
 | MEDL-02 | Phase 1 | Pending |
@@ -136,4 +136,4 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 ---
 *Requirements defined: 2026-03-01*
-*Last updated: 2026-03-01 after roadmap creation*
+*Last updated: 2026-03-01 after plan 01-01 completion (CONF-01 through CONF-05 complete)*

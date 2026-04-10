@@ -32,7 +32,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 **Plans:** 2 plans
 
 Plans:
-- [ ] 01-01-PLAN.md — TranscribeConfig struct, TOML/env parsing, defaults, and validation
+- [x] 01-01-PLAN.md — TranscribeConfig struct, TOML/env parsing, defaults, and validation
 - [ ] 01-02-PLAN.md — Transcriber interface, factory, DownloadMedia method, and main.go wiring
 
 ### Phase 2: Cloud Providers
@@ -89,7 +89,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Foundation | 0/2 | Not started | - |
+| 1. Foundation | 1/2 | In progress | - |
 | 2. Cloud Providers | 0/2 | Not started | - |
 | 3. Integration | 0/2 | Not started | - |
 | 4. Reliability | 0/1 | Not started | - |
