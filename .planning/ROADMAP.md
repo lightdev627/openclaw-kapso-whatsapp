@@ -45,11 +45,11 @@ Plans:
   3. MIME normalisation helper maps all OGG/Opus variants to `audio/ogg` before any provider call
   4. Table-driven tests for each provider pass against mock HTTP servers, including MIME boundary construction
   5. Retry logic test passes: 429/5xx triggers backoff, success after retry, exhausted retries returns error
-**Plans**: TBD
+**Plans:** 2 plans
 
 Plans:
-- [ ] 02-01: OpenAI/Groq shared provider with MIME normalisation and table-driven tests
-- [ ] 02-02: Deepgram provider and retry infrastructure
+- [ ] 02-01-PLAN.md — OpenAI/Groq shared provider with MIME normalization, table-driven tests, and factory wiring
+- [ ] 02-02-PLAN.md — Deepgram provider, retry wrapper infrastructure, and factory retry wrapping
 
 ### Phase 3: Integration
 **Goal**: Audio messages flow end-to-end from WhatsApp through transcription into the relay pipeline
