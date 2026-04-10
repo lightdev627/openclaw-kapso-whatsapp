@@ -29,11 +29,11 @@ Decimal phases appear between their surrounding integers in numeric order.
   3. `transcribe.Transcriber` interface and `New(cfg)` factory exist — unknown provider string returns an error at startup
   4. `kapso.Client.DownloadMedia` fetches audio bytes and rejects responses exceeding the configured size limit
   5. Media download test passes: size-limit enforcement verified against a mock HTTP server
-**Plans**: TBD
+**Plans:** 2 plans
 
 Plans:
-- [ ] 01-01: Config struct and TOML/env parsing with 3-tier precedence
-- [ ] 01-02: Transcriber interface, factory, and media download method
+- [ ] 01-01-PLAN.md — TranscribeConfig struct, TOML/env parsing, defaults, and validation
+- [ ] 01-02-PLAN.md — Transcriber interface, factory, DownloadMedia method, and main.go wiring
 
 ### Phase 2: Cloud Providers
 **Goal**: Audio messages can be transcribed via Groq, OpenAI, or Deepgram using only stdlib HTTP
