@@ -85,10 +85,11 @@ func TestStartFunnelWithRetry(t *testing.T) {
 			var sleeps []time.Duration
 
 			cfg := FunnelConfig{
-				BaseDelay: 100 * time.Millisecond,
-				MaxDelay:  10 * time.Second,
-				Factor:    2.0,
-				SleepFunc: func(d time.Duration) { sleeps = append(sleeps, d) },
+				BaseDelay:        100 * time.Millisecond,
+				MaxDelay:         10 * time.Second,
+				Factor:           2.0,
+				SkipInstallCheck: true,
+				SleepFunc:        func(d time.Duration) { sleeps = append(sleeps, d) },
 				StatusFunc: func() ([]byte, error) {
 					if callIdx >= len(tt.statusCalls) {
 						t.Fatal("unexpected extra status call")
@@ -137,9 +138,10 @@ func TestStartFunnelWithRetry_ContextCancel(t *testing.T) {
 
 	calls := 0
 	cfg := FunnelConfig{
-		BaseDelay: 100 * time.Millisecond,
-		MaxDelay:  10 * time.Second,
-		Factor:    2.0,
+		BaseDelay:        100 * time.Millisecond,
+		MaxDelay:         10 * time.Second,
+		Factor:           2.0,
+		SkipInstallCheck: true,
 		SleepFunc: func(d time.Duration) {
 			cancel() // cancel after first sleep
 		},
@@ -178,10 +180,11 @@ func TestStartFunnelWithRetry_ExponentialBackoff(t *testing.T) {
 	}
 
 	cfg := FunnelConfig{
-		BaseDelay: 1 * time.Second,
-		MaxDelay:  10 * time.Second,
-		Factor:    2.0,
-		SleepFunc: func(d time.Duration) { sleeps = append(sleeps, d) },
+		BaseDelay:        1 * time.Second,
+		MaxDelay:         10 * time.Second,
+		Factor:           2.0,
+		SkipInstallCheck: true,
+		SleepFunc:        func(d time.Duration) { sleeps = append(sleeps, d) },
 		StatusFunc: func() ([]byte, error) {
 			c := statuses[callIdx]
 			callIdx++
@@ -230,10 +233,11 @@ func TestStartFunnelWithRetry_BackoffCap(t *testing.T) {
 	}{out: statusJSON("node.ts.net.")}
 
 	cfg := FunnelConfig{
-		BaseDelay: 1 * time.Second,
-		MaxDelay:  3 * time.Second,
-		Factor:    2.0,
-		SleepFunc: func(d time.Duration) { sleeps = append(sleeps, d) },
+		BaseDelay:        1 * time.Second,
+		MaxDelay:         3 * time.Second,
+		Factor:           2.0,
+		SkipInstallCheck: true,
+		SleepFunc:        func(d time.Duration) { sleeps = append(sleeps, d) },
 		StatusFunc: func() ([]byte, error) {
 			c := statuses[callIdx]
 			callIdx++

@@ -92,12 +92,13 @@ func PublicURL() (string, error) {
 // FunnelConfig holds retry and dependency-injection options for StartFunnelWithRetry.
 // Zero values use sensible defaults (1s base, 60s max, 2x factor).
 type FunnelConfig struct {
-	BaseDelay  time.Duration
-	MaxDelay   time.Duration
-	Factor     float64
-	SleepFunc  func(time.Duration)
-	StatusFunc func() ([]byte, error)
-	StartFunc  func(port string) (*exec.Cmd, error)
+	BaseDelay        time.Duration
+	MaxDelay         time.Duration
+	Factor           float64
+	SleepFunc        func(time.Duration)
+	StatusFunc       func() ([]byte, error)
+	StartFunc        func(port string) (*exec.Cmd, error)
+	SkipInstallCheck bool // skip EnsureInstalled; set when StatusFunc/StartFunc replace the real CLI
 }
 
 func (c *FunnelConfig) defaults() {
@@ -134,8 +135,10 @@ func (c *FunnelConfig) defaults() {
 func StartFunnelWithRetry(ctx context.Context, port string, cfg FunnelConfig) (webhookURL string, proc *os.Process, err error) {
 	cfg.defaults()
 
-	if err := EnsureInstalled(); err != nil {
-		return "", nil, err
+	if !cfg.SkipInstallCheck {
+		if err := EnsureInstalled(); err != nil {
+			return "", nil, err
+		}
 	}
 
 	delay := cfg.BaseDelay
