@@ -34,20 +34,39 @@ let
   };
 
   # Script that reads secret files and exports them as env vars before exec.
+  # Waits up to 60 s for each file to appear, so secret managers like sops-nix
+  # that write files slightly after user services start don't cause a failure.
   loadSecrets = pkgs.writeShellScript "kapso-load-secrets" ''
+    wait_secret() {
+      local file="$1"
+      local deadline=$(( $(date +%s) + 60 ))
+      while [ ! -s "$file" ]; do
+        if [ "$(date +%s)" -ge "$deadline" ]; then
+          echo "kapso-load-secrets: timed out waiting for $file" >&2
+          exit 1
+        fi
+        sleep 1
+      done
+    }
+
     ${lib.optionalString (cfg.secrets.apiKeyFile != null) ''
+      wait_secret "${cfg.secrets.apiKeyFile}"
       export KAPSO_API_KEY="$(cat ${cfg.secrets.apiKeyFile})"
     ''}
     ${lib.optionalString (cfg.secrets.phoneNumberIdFile != null) ''
+      wait_secret "${cfg.secrets.phoneNumberIdFile}"
       export KAPSO_PHONE_NUMBER_ID="$(cat ${cfg.secrets.phoneNumberIdFile})"
     ''}
     ${lib.optionalString (cfg.secrets.webhookVerifyTokenFile != null) ''
+      wait_secret "${cfg.secrets.webhookVerifyTokenFile}"
       export KAPSO_WEBHOOK_VERIFY_TOKEN="$(cat ${cfg.secrets.webhookVerifyTokenFile})"
     ''}
     ${lib.optionalString (cfg.secrets.webhookSecretFile != null) ''
+      wait_secret "${cfg.secrets.webhookSecretFile}"
       export KAPSO_WEBHOOK_SECRET="$(cat ${cfg.secrets.webhookSecretFile})"
     ''}
     ${lib.optionalString (cfg.secrets.gatewayTokenFile != null) ''
+      wait_secret "${cfg.secrets.gatewayTokenFile}"
       export OPENCLAW_TOKEN="$(cat ${cfg.secrets.gatewayTokenFile})"
     ''}
     exec "$@"
