@@ -22,16 +22,12 @@ func TestNew(t *testing.T) {
 			wantNil: true,
 		},
 		{
-			name:        "openai with api key returns not yet implemented",
-			cfg:         config.TranscribeConfig{Provider: "openai", APIKey: "sk-test"},
-			wantErr:     true,
-			errContains: "not yet implemented",
+			name: "openai with api key returns non-nil transcriber",
+			cfg:  config.TranscribeConfig{Provider: "openai", APIKey: "sk-test"},
 		},
 		{
-			name:        "groq with api key returns not yet implemented",
-			cfg:         config.TranscribeConfig{Provider: "groq", APIKey: "gsk-test"},
-			wantErr:     true,
-			errContains: "not yet implemented",
+			name: "groq with api key returns non-nil transcriber",
+			cfg:  config.TranscribeConfig{Provider: "groq", APIKey: "gsk-test"},
 		},
 		{
 			name:        "deepgram with api key returns not yet implemented",
@@ -64,16 +60,14 @@ func TestNew(t *testing.T) {
 			errContains: "unknown transcription provider",
 		},
 		{
-			name:        "uppercase OPENAI normalizes to openai behavior",
-			cfg:         config.TranscribeConfig{Provider: "OPENAI", APIKey: "sk-test"},
-			wantErr:     true,
-			errContains: "not yet implemented",
+			name: "uppercase OPENAI normalizes to openai behavior",
+			cfg:  config.TranscribeConfig{Provider: "OPENAI", APIKey: "sk-test"},
+			// Now returns a working provider, not an error.
 		},
 		{
-			name:        "whitespace openai normalizes to openai behavior",
-			cfg:         config.TranscribeConfig{Provider: " openai ", APIKey: "sk-test"},
-			wantErr:     true,
-			errContains: "not yet implemented",
+			name: "whitespace openai normalizes to openai behavior",
+			cfg:  config.TranscribeConfig{Provider: " openai ", APIKey: "sk-test"},
+			// Now returns a working provider, not an error.
 		},
 		{
 			name:        "local with non-existent binary returns error about binary not found",

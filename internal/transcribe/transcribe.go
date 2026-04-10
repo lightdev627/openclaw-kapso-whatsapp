@@ -29,7 +29,37 @@ func New(cfg config.TranscribeConfig) (Transcriber, error) {
 	}
 
 	switch provider {
-	case "openai", "groq", "deepgram":
+	case "openai":
+		if cfg.APIKey == "" {
+			return nil, fmt.Errorf("provider %q requires KAPSO_TRANSCRIBE_API_KEY", provider)
+		}
+		model := cfg.Model
+		if model == "" {
+			model = "whisper-1"
+		}
+		return &openAIWhisper{
+			BaseURL:  "https://api.openai.com/v1",
+			APIKey:   cfg.APIKey,
+			Model:    model,
+			Language: cfg.Language,
+		}, nil
+
+	case "groq":
+		if cfg.APIKey == "" {
+			return nil, fmt.Errorf("provider %q requires KAPSO_TRANSCRIBE_API_KEY", provider)
+		}
+		model := cfg.Model
+		if model == "" {
+			model = "whisper-large-v3"
+		}
+		return &openAIWhisper{
+			BaseURL:  "https://api.groq.com/openai/v1",
+			APIKey:   cfg.APIKey,
+			Model:    model,
+			Language: cfg.Language,
+		}, nil
+
+	case "deepgram":
 		if cfg.APIKey == "" {
 			return nil, fmt.Errorf("provider %q requires KAPSO_TRANSCRIBE_API_KEY", provider)
 		}
