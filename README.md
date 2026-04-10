@@ -256,6 +256,82 @@ Register `https://yourdomain.com/webhook` as the webhook URL in Kapso.
 
 > **Polling fallback:** Any webhook mode can also run polling as a safety net by setting `poll_fallback = true`. Messages are deduplicated by ID.
 
+## Voice transcription
+
+Incoming voice notes are automatically transcribed and forwarded as `[voice] <transcript>` — the AI agent sees text, not an audio file. If transcription is not configured or fails, the message is forwarded as `[audio] (audio/ogg)` instead. No messages are ever lost.
+
+### Cloud providers
+
+Set a provider and API key — that's it.
+
+```toml
+[transcribe]
+provider = "groq"           # "groq" | "openai" | "deepgram"
+api_key = ""                # prefer KAPSO_TRANSCRIBE_API_KEY env var
+```
+
+| Provider | Default model | Base URL |
+|----------|--------------|----------|
+| `groq` | `whisper-large-v3` | `api.groq.com/openai/v1` |
+| `openai` | `whisper-1` | `api.openai.com/v1` |
+| `deepgram` | `nova-3` | `api.deepgram.com/v1` |
+
+Groq and OpenAI share the same implementation (configurable `BaseURL`). All cloud providers include automatic retry on 429/5xx (3 attempts, exponential backoff).
+
+### Local provider (whisper.cpp)
+
+No API costs. Requires [whisper.cpp](https://github.com/ggerganov/whisper.cpp) and ffmpeg installed.
+
+```toml
+[transcribe]
+provider = "local"
+binary_path = "whisper-cli"          # path to whisper-cli binary
+model_path = "/path/to/ggml-base.bin"
+```
+
+Audio is converted from OGG to WAV via ffmpeg before processing. Temp files are cleaned up automatically.
+
+### Full config reference
+
+```toml
+[transcribe]
+provider = ""               # "groq" | "openai" | "deepgram" | "local" (empty = disabled)
+api_key = ""                # API key for cloud providers
+model = ""                  # override default model per provider
+language = ""               # language hint (empty = auto-detect)
+max_audio_size = 26214400   # max download size in bytes (default 25MB)
+binary_path = "whisper-cli" # local provider only
+model_path = ""             # local provider only
+timeout = 30                # per-call timeout in seconds (cloud providers)
+no_speech_threshold = 0.85  # silence detection — above this, falls back to [audio]
+cache_ttl = 3600            # transcript cache lifetime in seconds (SHA-256 keyed)
+debug = false               # log avg_logprob, no_speech_prob, detected language
+```
+
+### Environment variables
+
+Every field has a `KAPSO_TRANSCRIBE_` env var override:
+
+| Variable | Field |
+|----------|-------|
+| `KAPSO_TRANSCRIBE_PROVIDER` | `provider` |
+| `KAPSO_TRANSCRIBE_API_KEY` | `api_key` |
+| `KAPSO_TRANSCRIBE_MODEL` | `model` |
+| `KAPSO_TRANSCRIBE_LANGUAGE` | `language` |
+| `KAPSO_TRANSCRIBE_MAX_AUDIO_SIZE` | `max_audio_size` |
+| `KAPSO_TRANSCRIBE_BINARY_PATH` | `binary_path` |
+| `KAPSO_TRANSCRIBE_MODEL_PATH` | `model_path` |
+| `KAPSO_TRANSCRIBE_DEBUG` | `debug` |
+| `KAPSO_TRANSCRIBE_NO_SPEECH_THRESHOLD` | `no_speech_threshold` |
+| `KAPSO_TRANSCRIBE_CACHE_TTL` | `cache_ttl` |
+
+Minimal cloud setup with env vars only:
+
+```bash
+export KAPSO_TRANSCRIBE_PROVIDER="groq"
+export KAPSO_TRANSCRIBE_API_KEY="your-key"
+```
+
 ## Project structure
 
 ```
@@ -271,6 +347,7 @@ internal/
     webhook/                HTTP webhook source
   relay/                    Relay agent replies back to WhatsApp
   security/                 Allowlist, rate limiting, role tagging, session isolation
+  transcribe/               Voice transcription providers and caching
   tailscale/                Tailscale Funnel automation (auto-start, URL discovery)
 nix/
   module.nix                Home-manager module with typed options + sops-nix support
