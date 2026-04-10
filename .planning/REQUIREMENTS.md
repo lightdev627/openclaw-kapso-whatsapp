@@ -93,13 +93,47 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| _(populated by roadmapper)_ | | |
+| CONF-01 | Phase 1 | Pending |
+| CONF-02 | Phase 1 | Pending |
+| CONF-03 | Phase 1 | Pending |
+| CONF-04 | Phase 1 | Pending |
+| CONF-05 | Phase 1 | Pending |
+| TRNS-01 | Phase 1 | Pending |
+| MEDL-01 | Phase 1 | Pending |
+| MEDL-02 | Phase 1 | Pending |
+| MEDL-03 | Phase 1 | Pending |
+| MEDL-04 | Phase 1 | Pending |
+| WIRE-01 | Phase 1 | Pending |
+| TEST-04 | Phase 1 | Pending |
+| PROV-01 | Phase 2 | Pending |
+| PROV-02 | Phase 2 | Pending |
+| PROV-03 | Phase 2 | Pending |
+| PROV-04 | Phase 2 | Pending |
+| INFR-03 | Phase 2 | Pending |
+| TEST-01 | Phase 2 | Pending |
+| TEST-05 | Phase 2 | Pending |
+| TRNS-02 | Phase 3 | Pending |
+| TRNS-03 | Phase 3 | Pending |
+| LOCL-01 | Phase 3 | Pending |
+| LOCL-02 | Phase 3 | Pending |
+| LOCL-03 | Phase 3 | Pending |
+| LOCL-04 | Phase 3 | Pending |
+| WIRE-02 | Phase 3 | Pending |
+| WIRE-03 | Phase 3 | Pending |
+| INFR-02 | Phase 3 | Pending |
+| TEST-02 | Phase 3 | Pending |
+| TEST-03 | Phase 3 | Pending |
+| TRNS-04 | Phase 4 | Pending |
+| TRNS-05 | Phase 4 | Pending |
+| INFR-01 | Phase 4 | Pending |
+| INFR-04 | Phase 4 | Pending |
+| TEST-06 | Phase 4 | Pending |
 
 **Coverage:**
-- v1 requirements: 30 total
-- Mapped to phases: 0
-- Unmapped: 30 _(pending roadmap)_
+- v1 requirements: 35 total
+- Mapped to phases: 35
+- Unmapped: 0
 
 ---
 *Requirements defined: 2026-03-01*
-*Last updated: 2026-03-01 after initial definition*
+*Last updated: 2026-03-01 after roadmap creation*
