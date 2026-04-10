@@ -1,18 +1,25 @@
 package delivery
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"strings"
 
 	"github.com/Enriquefft/openclaw-kapso-whatsapp/internal/kapso"
+	"github.com/Enriquefft/openclaw-kapso-whatsapp/internal/transcribe"
 )
 
 // ExtractText converts an inbound message of any supported type into a text
 // representation suitable for forwarding to the gateway. It returns the text
 // and true on success, or ("", false) if the message should be skipped.
 // Unsupported types are logged and trigger a WhatsApp reply to the sender.
-func ExtractText(msg kapso.Message, client *kapso.Client) (string, bool) {
+//
+// When tr is non-nil and the message is audio, transcription is attempted first.
+// On success it returns "[voice] <transcript>". On any failure it falls back to
+// the standard "[audio] (mime)" format and logs a WARN. A nil tr preserves the
+// previous fallback-only behavior.
+func ExtractText(msg kapso.Message, client *kapso.Client, tr transcribe.Transcriber, maxAudioSize int64) (string, bool) {
 	switch msg.Type {
 	case "text":
 		if msg.Text == nil {
@@ -39,6 +46,21 @@ func ExtractText(msg kapso.Message, client *kapso.Client) (string, bool) {
 	case "audio":
 		if msg.Audio == nil {
 			return "", false
+		}
+		if tr != nil {
+			if media, err := client.GetMediaURL(msg.Audio.ID); err == nil {
+				if audio, err := client.DownloadMedia(media.URL, maxAudioSize); err == nil {
+					if text, err := tr.Transcribe(context.Background(), audio, msg.Audio.MimeType); err == nil {
+						return "[voice] " + text, true
+					} else {
+						log.Printf("WARN: transcription failed for message %s: %v", msg.ID, err)
+					}
+				} else {
+					log.Printf("WARN: audio download failed for message %s: %v", msg.ID, err)
+				}
+			} else {
+				log.Printf("WARN: media URL retrieval failed for message %s: %v", msg.ID, err)
+			}
 		}
 		return formatMediaMessage("audio", "", msg.Audio.MimeType, msg.Audio.ID, client), true
 

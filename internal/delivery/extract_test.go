@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/Enriquefft/openclaw-kapso-whatsapp/internal/kapso"
+	"github.com/Enriquefft/openclaw-kapso-whatsapp/internal/transcribe"
 )
 
 // mockTranscriber is a test double for transcribe.Transcriber.
@@ -375,7 +376,7 @@ func TestExtractText_AudioTranscription(t *testing.T) {
 
 	tests := []struct {
 		name           string
-		transcriber    *mockTranscriber
+		transcriber    transcribe.Transcriber
 		mediaURLStatus int
 		downloadStatus int
 		wantPrefix     string
