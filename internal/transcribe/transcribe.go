@@ -44,10 +44,12 @@ func New(cfg config.TranscribeConfig) (Transcriber, error) {
 			model = "whisper-1"
 		}
 		p = &openAIWhisper{
-			BaseURL:  "https://api.openai.com/v1",
-			APIKey:   cfg.APIKey,
-			Model:    model,
-			Language: cfg.Language,
+			BaseURL:           "https://api.openai.com/v1",
+			APIKey:            cfg.APIKey,
+			Model:             model,
+			Language:          cfg.Language,
+			NoSpeechThreshold: cfg.NoSpeechThreshold,
+			Debug:             cfg.Debug,
 		}
 
 	case "groq":
@@ -59,10 +61,12 @@ func New(cfg config.TranscribeConfig) (Transcriber, error) {
 			model = "whisper-large-v3"
 		}
 		p = &openAIWhisper{
-			BaseURL:  "https://api.groq.com/openai/v1",
-			APIKey:   cfg.APIKey,
-			Model:    model,
-			Language: cfg.Language,
+			BaseURL:           "https://api.groq.com/openai/v1",
+			APIKey:            cfg.APIKey,
+			Model:             model,
+			Language:          cfg.Language,
+			NoSpeechThreshold: cfg.NoSpeechThreshold,
+			Debug:             cfg.Debug,
 		}
 
 	case "deepgram":
@@ -90,13 +94,26 @@ func New(cfg config.TranscribeConfig) (Transcriber, error) {
 		if _, err := exec.LookPath("ffmpeg"); err != nil {
 			return nil, fmt.Errorf("local provider requires ffmpeg in PATH: %w", err)
 		}
-		return newLocalWhisper(cfg)
+		lp, err := newLocalWhisper(cfg)
+		if err != nil {
+			return nil, err
+		}
+		if cfg.CacheTTL > 0 {
+			return newCacheTranscriber(lp, time.Duration(cfg.CacheTTL)*time.Second), nil
+		}
+		return lp, nil
 
 	default:
 		return nil, fmt.Errorf("unknown transcription provider %q (valid: openai, groq, deepgram, local)", provider)
 	}
 
 	// Wrap all cloud providers with retry logic.
+	// Composition: cache(retry(provider)) — cache is outermost so a cache hit
+	// short-circuits both retry and provider call (RESEARCH.md Pitfall 2).
 	timeout := time.Duration(cfg.Timeout) * time.Second
-	return newRetryTranscriber(p, timeout), nil
+	wrapped := newRetryTranscriber(p, timeout)
+	if cfg.CacheTTL > 0 {
+		return newCacheTranscriber(wrapped, time.Duration(cfg.CacheTTL)*time.Second), nil
+	}
+	return wrapped, nil
 }
