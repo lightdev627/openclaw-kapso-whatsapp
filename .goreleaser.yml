@@ -14,9 +14,9 @@ builds:
       - amd64
       - arm64
 
-  - id: poller
-    main: ./cmd/kapso-whatsapp-poller
-    binary: kapso-whatsapp-poller
+  - id: bridge
+    main: ./cmd/kapso-whatsapp-bridge
+    binary: kapso-whatsapp-bridge
     env:
       - CGO_ENABLED=0
     goos:

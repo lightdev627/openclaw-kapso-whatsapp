@@ -2,7 +2,7 @@
 
 ## Project
 
-Go daemon bridging WhatsApp (Kapso Cloud API) → OpenClaw AI gateway. Two binaries: `kapso-whatsapp-poller` (main daemon) and `kapso-whatsapp-cli` (send messages/health checks).
+Go daemon bridging WhatsApp (Kapso Cloud API) → OpenClaw AI gateway. Two binaries: `kapso-whatsapp-bridge` (main daemon) and `kapso-whatsapp-cli` (send messages/health checks).
 
 ## Commands
 
@@ -17,7 +17,7 @@ direnv reload                         # After flake.nix changes (Nix devs only)
 ## Structure
 
 ```
-cmd/kapso-whatsapp-poller/main.go     # Daemon entrypoint
+cmd/kapso-whatsapp-bridge/main.go     # Daemon entrypoint
 cmd/kapso-whatsapp-cli/main.go        # CLI entrypoint
 internal/config/                      # TOML + env config (3-tier: defaults < file < env)
 internal/kapso/                       # Kapso HTTP client + webhook types

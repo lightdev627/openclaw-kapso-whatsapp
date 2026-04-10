@@ -4,7 +4,7 @@ default: build
 # Build all binaries
 build:
     go build ./cmd/kapso-whatsapp-cli
-    go build ./cmd/kapso-whatsapp-poller
+    go build ./cmd/kapso-whatsapp-bridge
 
 # Run all tests
 test:
@@ -33,11 +33,11 @@ vet:
 # Install binaries to $GOPATH/bin
 install:
     go install ./cmd/kapso-whatsapp-cli
-    go install ./cmd/kapso-whatsapp-poller
+    go install ./cmd/kapso-whatsapp-bridge
 
 # Clean build artifacts
 clean:
-    rm -f kapso-whatsapp-cli kapso-whatsapp-poller
+    rm -f kapso-whatsapp-cli kapso-whatsapp-bridge
 
 # Run all checks (test + vet + fmt)
 check: test vet fmt-check

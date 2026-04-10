@@ -16,7 +16,7 @@ Stateless. Two Go binaries. Near-zero idle CPU.
 ## Architecture
 
 ```
-WhatsApp --> Kapso API --> kapso-whatsapp-poller --> OpenClaw Gateway --> AI Agent
+WhatsApp --> Kapso API --> kapso-whatsapp-bridge --> OpenClaw Gateway --> AI Agent
    ^                                |
    +--------------------------------+
           relay: reads session JSONL, sends reply back
@@ -40,7 +40,7 @@ No config file. No database. No reverse proxy.
 ```bash
 export KAPSO_API_KEY="your-key"
 export KAPSO_PHONE_NUMBER_ID="your-phone-number-id"
-kapso-whatsapp-poller
+kapso-whatsapp-bridge
 ```
 
 That's it — polling mode works with zero configuration. To cut latency to under 1 second, see [Tailscale Funnel mode](#tailscale-funnel-zero-config-tunnel).
@@ -51,7 +51,7 @@ That's it — polling mode works with zero configuration. To cut latency to unde
 
 ```bash
 go install github.com/Enriquefft/openclaw-kapso-whatsapp/cmd/kapso-whatsapp-cli@latest
-go install github.com/Enriquefft/openclaw-kapso-whatsapp/cmd/kapso-whatsapp-poller@latest
+go install github.com/Enriquefft/openclaw-kapso-whatsapp/cmd/kapso-whatsapp-bridge@latest
 ```
 
 Copy the agent skill definition into your OpenClaw workspace:
@@ -84,7 +84,7 @@ imports = [ inputs.kapso-whatsapp.homeManagerModules.default ];
 
 services.kapso-whatsapp = {
   enable = true;
-  package = inputs.kapso-whatsapp.packages.${pkgs.system}.poller;
+  package = inputs.kapso-whatsapp.packages.${pkgs.system}.bridge;
   cliPackage = inputs.kapso-whatsapp.packages.${pkgs.system}.cli;
   secrets.apiKeyFile = config.sops.secrets.kapso-api-key.path;          # or any file path
   secrets.phoneNumberIdFile = config.sops.secrets.kapso-phone-number-id.path;
@@ -199,7 +199,7 @@ If a number appears in both `KAPSO_ALLOWED_NUMBERS` and the TOML `[security.role
 Works out of the box — no public endpoint, no domain, no tunnel. Polls every 30 seconds with up to 30s latency on incoming messages.
 
 ```
-kapso-whatsapp-poller  --poll-->  Kapso REST API
+kapso-whatsapp-bridge  --poll-->  Kapso REST API
        |                               |
        |  (new messages)               |
        v                               |
@@ -210,7 +210,7 @@ No extra config needed — just set the two required env vars.
 
 #### Tailscale Funnel (zero-config tunnel)
 
-Real-time delivery (< 1s latency) without owning a domain. The poller starts [Tailscale Funnel](https://tailscale.com/kb/1223/funnel) automatically and prints the webhook URL to register in Kapso. Tailscale Funnel works on the free plan.
+Real-time delivery (< 1s latency) without owning a domain. The bridge starts [Tailscale Funnel](https://tailscale.com/kb/1223/funnel) automatically and prints the webhook URL to register in Kapso. Tailscale Funnel works on the free plan.
 
 ```
 Kapso webhook POST  -->  https://<machine>.<tailnet>.ts.net/webhook
@@ -337,7 +337,7 @@ export KAPSO_TRANSCRIBE_API_KEY="your-key"
 ```
 cmd/
   kapso-whatsapp-cli/       CLI for sending messages
-  kapso-whatsapp-poller/    Receives inbound messages (polling, tailscale, or domain)
+  kapso-whatsapp-bridge/    Receives inbound messages (polling, tailscale, or domain)
 internal/
   config/                   TOML config loading with env var overrides
   kapso/                    Kapso API client, message types, list endpoint

@@ -17,24 +17,24 @@
 
         cli = pkgs.buildGoModule {
           pname = "kapso-whatsapp-cli";
-          version = "0.3.0";
+          version = "0.2.0";
           src = ./.;
           subPackages = [ "cmd/kapso-whatsapp-cli" ];
           vendorHash = "sha256-Upjt0Q2G6x5vGf0bG0TS9uWrHBow8/cQsZexhMgVb2I=";
           env.CGO_ENABLED = "0";
         };
 
-        poller = pkgs.buildGoModule {
-          pname = "kapso-whatsapp-poller";
-          version = "0.3.0";
+        bridge = pkgs.buildGoModule {
+          pname = "kapso-whatsapp-bridge";
+          version = "0.2.0";
           src = ./.;
-          subPackages = [ "cmd/kapso-whatsapp-poller" ];
+          subPackages = [ "cmd/kapso-whatsapp-bridge" ];
           vendorHash = "sha256-Upjt0Q2G6x5vGf0bG0TS9uWrHBow8/cQsZexhMgVb2I=";
           env.CGO_ENABLED = "0";
         };
       in {
         packages = {
-          inherit cli poller;
+          inherit cli bridge;
           default = cli;
         };
 

@@ -96,7 +96,7 @@ in {
 
     package = mkOption {
       type = types.package;
-      description = "The kapso-whatsapp-poller package.";
+      description = "The kapso-whatsapp-bridge package.";
     };
 
     cliPackage = mkOption {
@@ -314,13 +314,13 @@ in {
 
     home.file.".config/kapso-whatsapp/config.toml".source = configToml;
 
-    systemd.user.services.kapso-whatsapp-poller = {
+    systemd.user.services.kapso-whatsapp-bridge = {
       Unit = {
-        Description = "Kapso WhatsApp Poller";
+        Description = "Kapso WhatsApp Bridge";
         After = [ "openclaw-gateway.service" ];
       };
       Service = {
-        ExecStart = "${loadSecrets} ${cfg.package}/bin/kapso-whatsapp-poller";
+        ExecStart = "${loadSecrets} ${cfg.package}/bin/kapso-whatsapp-bridge";
         Environment = [ "KAPSO_CONFIG=%h/.config/kapso-whatsapp/config.toml" ];
         Restart = "on-failure";
       };
