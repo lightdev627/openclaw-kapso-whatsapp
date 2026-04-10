@@ -24,10 +24,10 @@ Requirements for voice transcription milestone. Each maps to roadmap phases.
 
 ### Providers — Local
 
-- [ ] **LOCL-01**: Local whisper.cpp provider — write audio to temp file, exec whisper-cli with `exec.CommandContext`, capture stdout
-- [ ] **LOCL-02**: OGG/Opus to WAV conversion via ffmpeg before whisper.cpp processing
-- [ ] **LOCL-03**: Configurable binary path and model path for whisper.cpp
-- [ ] **LOCL-04**: Temp files cleaned up after use (including on context cancellation)
+- [x] **LOCL-01**: Local whisper.cpp provider — write audio to temp file, exec whisper-cli with `exec.CommandContext`, capture stdout
+- [x] **LOCL-02**: OGG/Opus to WAV conversion via ffmpeg before whisper.cpp processing
+- [x] **LOCL-03**: Configurable binary path and model path for whisper.cpp
+- [x] **LOCL-04**: Temp files cleaned up after use (including on context cancellation)
 
 ### Media Download
 
@@ -60,7 +60,7 @@ Requirements for voice transcription milestone. Each maps to roadmap phases.
 ### Tests
 
 - [x] **TEST-01**: Table-driven tests for each cloud provider with HTTP test server mocking API responses
-- [ ] **TEST-02**: Local whisper.cpp provider test with mock exec
+- [x] **TEST-02**: Local whisper.cpp provider test with mock exec
 - [ ] **TEST-03**: Extract integration test with mock transcriber (success + failure fallback)
 - [x] **TEST-04**: Media download test with size limit enforcement
 - [x] **TEST-05**: Retry logic test (429, 5xx, success after retry, exhausted retries)
@@ -114,14 +114,14 @@ Which phases cover which requirements. Updated during roadmap creation.
 | TEST-05 | Phase 2 | Complete |
 | TRNS-02 | Phase 3 | Pending |
 | TRNS-03 | Phase 3 | Pending |
-| LOCL-01 | Phase 3 | Pending |
-| LOCL-02 | Phase 3 | Pending |
-| LOCL-03 | Phase 3 | Pending |
-| LOCL-04 | Phase 3 | Pending |
+| LOCL-01 | Phase 3 | Complete |
+| LOCL-02 | Phase 3 | Complete |
+| LOCL-03 | Phase 3 | Complete |
+| LOCL-04 | Phase 3 | Complete |
 | WIRE-02 | Phase 3 | Pending |
 | WIRE-03 | Phase 3 | Pending |
 | INFR-02 | Phase 3 | Pending |
-| TEST-02 | Phase 3 | Pending |
+| TEST-02 | Phase 3 | Complete |
 | TEST-03 | Phase 3 | Pending |
 | TRNS-04 | Phase 4 | Pending |
 | TRNS-05 | Phase 4 | Pending |

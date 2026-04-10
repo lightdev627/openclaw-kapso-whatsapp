@@ -18,16 +18,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-01)
 
 **Core value:** Audio messages from WhatsApp users reach OpenClaw as usable text — transparently, reliably, with graceful fallback if transcription fails.
-**Current focus:** Phase 2: Cloud Providers
+**Current focus:** Phase 3: Integration
 
 ## Current Position
 
-Phase: 2 of 4 (Cloud Providers)
-Plan: 2 of 4 in current phase (02-02 complete)
+Phase: 3 of 4 (Integration)
+Plan: 1 of 2 in current phase (03-01 complete)
 Status: In progress
-Last activity: 2026-03-01 — Plan 02-02 complete: Deepgram provider, retry wrapper, factory wired
+Last activity: 2026-03-01 — Plan 03-01 complete: Local whisper.cpp provider with ffmpeg subprocess and injectable execCmd
 
-Progress: [████░░░░░░] 44%
+Progress: [█████░░░░░] 55%
 
 ## Performance Metrics
 
@@ -41,6 +41,7 @@ Progress: [████░░░░░░] 44%
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
 | 01-foundation | 2 | 4min | 2min |
+| 03-integration | 1 | 3min | 3min |
 
 **Recent Trend:**
 - Last 5 plans: 01-01 (2min)
@@ -74,6 +75,11 @@ Recent decisions affecting current work:
 - [02-02]: retryTranscriber.sleepFunc injectable for zero-delay tests — same pattern as mockable now() from Phase 1
 - [02-02]: factory_internal_test.go as separate internal-package file — allows type assertion on unexported *retryTranscriber
 - [02-02]: isRetryable returns false for nil and non-httpError errors — non-HTTP errors (network failures) not automatically retried
+- [03-01]: No retry wrapper on local provider — local subprocess failures are not transient; retrying wastes CPU
+- [03-01]: MkdirTemp + RemoveAll over individual CreateTemp — single cleanup call handles all intermediate files atomically
+- [03-01]: execCmd function field injectable (same pattern as now()) — lets tests intercept both ffmpeg and whisper-cli without real binaries
+- [03-01]: ffmpeg validated in factory LookPath, not in newLocalWhisper — struct constructor focuses on config validation
+- [03-01]: whisper-cli -otxt flag writes to outputPrefix.txt — reading stdout would risk buffering issues
 
 ### Pending Todos
 
@@ -89,5 +95,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-03-01
-Stopped at: Completed 02-02-PLAN.md — Deepgram provider, retry wrapper with exponential backoff, all cloud providers wrapped
+Stopped at: Completed 03-01-PLAN.md — local whisper.cpp provider with ffmpeg subprocess, injectable execCmd, factory wired
 Resume file: None

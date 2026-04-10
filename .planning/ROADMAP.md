@@ -64,7 +64,7 @@ Plans:
 **Plans:** 2 plans
 
 Plans:
-- [ ] 03-01-PLAN.md — Local whisper.cpp provider with ffmpeg conversion, temp file cleanup, and factory wiring
+- [x] 03-01-PLAN.md — Local whisper.cpp provider with ffmpeg conversion, temp file cleanup, and factory wiring
 - [ ] 03-02-PLAN.md — ExtractText pipeline wiring, audio transcription branch, and main.go startup integration
 
 ### Phase 4: Reliability
@@ -91,5 +91,5 @@ Phases execute in numeric order: 1 → 2 → 3 → 4
 |-------|----------------|--------|-----------|
 | 1. Foundation | 2/2 | Complete | 2026-03-01 |
 | 2. Cloud Providers | 2/2 | Complete   | 2026-03-01 |
-| 3. Integration | 0/2 | Not started | - |
+| 3. Integration | 1/2 | In progress | - |
 | 4. Reliability | 0/1 | Not started | - |
