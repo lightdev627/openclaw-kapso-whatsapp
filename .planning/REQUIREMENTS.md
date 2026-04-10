@@ -12,7 +12,7 @@ Requirements for voice transcription milestone. Each maps to roadmap phases.
 - [x] **TRNS-01**: Transcriber interface with single method: `Transcribe(ctx context.Context, audio []byte, mimeType string) (string, error)`
 - [x] **TRNS-02**: Transcribed audio enters pipeline as `[voice] ` + transcript, identical to typed text
 - [x] **TRNS-03**: Transcription failure falls back to `[audio] (mime)` with log warning (zero message loss)
-- [ ] **TRNS-04**: `no_speech_prob` quality guard — high probability of silence/noise falls back to `[audio]` instead of sending hallucinated text (configurable threshold, default 0.85)
+- [x] **TRNS-04**: `no_speech_prob` quality guard — high probability of silence/noise falls back to `[audio]` instead of sending hallucinated text (configurable threshold, default 0.85)
 - [ ] **TRNS-05**: Audio content-hash caching — SHA-256 hash of audio bytes, in-memory map with TTL, avoids duplicate API calls on webhook retries
 
 ### Providers — Cloud
@@ -46,10 +46,10 @@ Requirements for voice transcription milestone. Each maps to roadmap phases.
 
 ### Infrastructure
 
-- [ ] **INFR-01**: Retry with exponential backoff on 429/5xx — max 3 attempts, base 1s, factor 2x, jitter
+- [x] **INFR-01**: Retry with exponential backoff on 429/5xx — max 3 attempts, base 1s, factor 2x, jitter
 - [x] **INFR-02**: `context.WithTimeout` per transcription call to prevent pipeline blocking
 - [x] **INFR-03**: OGG/Opus MIME normalization — use `mime/multipart.CreatePart` (not `CreateFormFile`) for correct Content-Type
-- [ ] **INFR-04**: Debug-level logging of `avg_logprob`, `no_speech_prob`, and detected language from verbose_json responses
+- [x] **INFR-04**: Debug-level logging of `avg_logprob`, `no_speech_prob`, and detected language from verbose_json responses
 
 ### Wiring
 
@@ -123,10 +123,10 @@ Which phases cover which requirements. Updated during roadmap creation.
 | INFR-02 | Phase 3 | Complete |
 | TEST-02 | Phase 3 | Complete |
 | TEST-03 | Phase 3 | Complete |
-| TRNS-04 | Phase 4 | Pending |
+| TRNS-04 | Phase 4 | Complete |
 | TRNS-05 | Phase 4 | Pending |
-| INFR-01 | Phase 4 | Pending |
-| INFR-04 | Phase 4 | Pending |
+| INFR-01 | Phase 4 | Complete |
+| INFR-04 | Phase 4 | Complete |
 | TEST-06 | Phase 4 | Pending |
 
 **Coverage:**

@@ -2,13 +2,13 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: unknown
-last_updated: "2026-03-01T16:06:32.982Z"
+status: in_progress
+last_updated: "2026-03-01T16:29:11Z"
 progress:
-  total_phases: 3
+  total_phases: 4
   completed_phases: 3
-  total_plans: 6
-  completed_plans: 6
+  total_plans: 8
+  completed_plans: 7
 ---
 
 # Project State
@@ -18,16 +18,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-01)
 
 **Core value:** Audio messages from WhatsApp users reach OpenClaw as usable text — transparently, reliably, with graceful fallback if transcription fails.
-**Current focus:** Phase 3: Integration
+**Current focus:** Phase 4: Reliability
 
 ## Current Position
 
-Phase: 3 of 4 (Integration)
-Plan: 2 of 2 in current phase (03-02 complete)
+Phase: 4 of 4 (Reliability)
+Plan: 1 of 2 in current phase (04-01 complete)
 Status: In progress
-Last activity: 2026-03-01 — Plan 03-02 complete: ExtractText widened, audio transcription branch, Transcriber wired through Poller/Server/main.go
+Last activity: 2026-03-01 — Plan 04-01 complete: no_speech_prob guard, debug logging, config fields (Debug/NoSpeechThreshold/CacheTTL), INFR-01 verified
 
-Progress: [██████░░░░] 66%
+Progress: [████████░░] 77%
 
 ## Performance Metrics
 
@@ -42,10 +42,11 @@ Progress: [██████░░░░] 66%
 |-------|-------|-------|----------|
 | 01-foundation | 2 | 4min | 2min |
 | 03-integration | 2 | 9min | 4.5min |
+| 04-reliability | 1 | 3min | 3min |
 
 **Recent Trend:**
-- Last 5 plans: 01-01 (2min)
-- Trend: Baseline established
+- Last 5 plans: 01-01 (2min), 04-01 (3min)
+- Trend: Consistent
 
 *Updated after each plan completion*
 
@@ -84,6 +85,11 @@ Recent decisions affecting current work:
 - [03-02]: WARN log on each failure step (GetMediaURL, DownloadMedia, Transcribe) — silent fallback, message never lost
 - [03-02]: transcribe.Transcriber interface type in test struct (not *mockTranscriber) — avoids Go interface nil pitfall where (*T)(nil) != nil interface
 - [03-02]: Fallback calls formatMediaMessage which does its own best-effort GetMediaURL — double call accepted for simplicity in non-critical fallback path
+- [04-01]: noSpeechError is unexported — delivery layer catches via errors.As, not string match
+- [04-01]: Empty segments array skips no_speech guard — short silent clips have no segments; rejecting them would be incorrect
+- [04-01]: providerName() derives from BaseURL string match — avoids adding a provider name field just for logging
+- [04-01]: Guard uses maxNoSpeech (worst segment) not average — one bad segment indicates noise in clip
+- [04-01]: gofmt applied to pre-existing unformatted test files as part of bulk fmt fix
 
 ### Pending Todos
 
@@ -99,5 +105,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-03-01
-Stopped at: Completed 03-02-PLAN.md — ExtractText widened with Transcriber, audio transcription branch [voice]/[audio], wired through Poller/Server/main.go
+Stopped at: Completed 04-01-PLAN.md — no_speech_prob guard, debug logging, config fields, INFR-01 verified
 Resume file: None

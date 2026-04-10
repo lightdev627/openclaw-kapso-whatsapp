@@ -77,7 +77,7 @@ Plans:
   3. Cache TTL expiry causes a cache miss and a fresh provider call
   4. High `no_speech_prob` (above configured threshold, default 0.85) falls back to `[audio]` instead of emitting a hallucinated transcript
   5. Debug logging emits `avg_logprob`, `no_speech_prob`, and detected language from verbose_json responses at debug level
-**Plans:** 2 plans
+**Plans:** 1/2 plans executed
 
 Plans:
 - [ ] 04-01-PLAN.md — Config fields, verbose_json expansion, no_speech_prob guard, debug logging, and retry verification
@@ -93,4 +93,4 @@ Phases execute in numeric order: 1 → 2 → 3 → 4
 | 1. Foundation | 2/2 | Complete | 2026-03-01 |
 | 2. Cloud Providers | 2/2 | Complete   | 2026-03-01 |
 | 3. Integration | 2/2 | Complete   | 2026-03-01 |
-| 4. Reliability | 0/2 | Not started | - |
+| 4. Reliability | 1/2 | In Progress|  |
