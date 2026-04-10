@@ -31,6 +31,19 @@ let
     } // lib.optionalAttrs (cfg.security.roles != {}) {
       roles = cfg.security.roles;
     };
+  } // lib.optionalAttrs (cfg.transcribe.provider != "") {
+    transcribe = {
+      provider            = cfg.transcribe.provider;
+      model               = cfg.transcribe.model;
+      language            = cfg.transcribe.language;
+      max_audio_size      = cfg.transcribe.maxAudioSize;
+      binary_path         = cfg.transcribe.binaryPath;
+      model_path          = cfg.transcribe.modelPath;
+      timeout             = cfg.transcribe.timeout;
+      no_speech_threshold = cfg.transcribe.noSpeechThreshold;
+      cache_ttl           = cfg.transcribe.cacheTTL;
+      debug               = cfg.transcribe.debug;
+    };
   };
 
   # Script that reads secret files and exports them as env vars before exec.
@@ -68,6 +81,10 @@ let
     ${lib.optionalString (cfg.secrets.gatewayTokenFile != null) ''
       wait_secret "${cfg.secrets.gatewayTokenFile}"
       export OPENCLAW_TOKEN="$(cat ${cfg.secrets.gatewayTokenFile})"
+    ''}
+    ${lib.optionalString (cfg.secrets.transcribeApiKeyFile != null) ''
+      wait_secret "${cfg.secrets.transcribeApiKeyFile}"
+      export KAPSO_TRANSCRIBE_API_KEY="$(cat ${cfg.secrets.transcribeApiKeyFile})"
     ''}
     exec "$@"
   '';
@@ -191,6 +208,68 @@ in {
       };
     };
 
+    transcribe = {
+      provider = mkOption {
+        type = types.enum [ "" "openai" "groq" "deepgram" "local" ];
+        default = "";
+        description = "Transcription provider. Empty string disables transcription.";
+      };
+
+      model = mkOption {
+        type = types.str;
+        default = "";
+        description = "Model name. Defaults vary by provider (whisper-1, whisper-large-v3, nova-3).";
+      };
+
+      language = mkOption {
+        type = types.str;
+        default = "";
+        description = "Language code for transcription (e.g. 'en').";
+      };
+
+      maxAudioSize = mkOption {
+        type = types.int;
+        default = 26214400;
+        description = "Maximum audio file size in bytes (default 25MB).";
+      };
+
+      binaryPath = mkOption {
+        type = types.str;
+        default = "whisper-cli";
+        description = "Path to local whisper binary (local provider only).";
+      };
+
+      modelPath = mkOption {
+        type = types.str;
+        default = "";
+        description = "Path to local whisper model file (required for local provider).";
+      };
+
+      timeout = mkOption {
+        type = types.int;
+        default = 30;
+        description = "Transcription timeout in seconds.";
+      };
+
+      noSpeechThreshold = mkOption {
+        type = types.float;
+        default = 0.85;
+        description = "Threshold for no-speech detection (openai/groq providers).";
+      };
+
+      cacheTTL = mkOption {
+        type = types.int;
+        default = 3600;
+        description = "Cache TTL in seconds for transcription results.";
+      };
+
+      debug = mkOption {
+        type = types.bool;
+        default = false;
+        description = "Enable debug logging for transcription.";
+      };
+    };
+
     secrets = {
       apiKeyFile = mkOption {
         type = types.nullOr types.str;
@@ -220,6 +299,12 @@ in {
         type = types.nullOr types.str;
         default = null;
         description = "Path to file containing the OpenClaw gateway token.";
+      };
+
+      transcribeApiKeyFile = mkOption {
+        type = types.nullOr types.str;
+        default = null;
+        description = "Path to file containing the transcription API key (openai/groq/deepgram providers).";
       };
     };
   };
