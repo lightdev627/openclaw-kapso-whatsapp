@@ -8,6 +8,7 @@ import (
 
 	"github.com/Enriquefft/openclaw-kapso-whatsapp/internal/config"
 	"github.com/Enriquefft/openclaw-kapso-whatsapp/internal/kapso"
+	"github.com/Enriquefft/openclaw-kapso-whatsapp/internal/preflight"
 )
 
 func main() {
@@ -21,6 +22,8 @@ func main() {
 		handleSend(os.Args[2:])
 	case "status":
 		handleStatus()
+	case "preflight":
+		handlePreflight()
 	case "help", "--help", "-h":
 		printUsage()
 	default:
@@ -112,12 +115,29 @@ func handleStatus() {
 	}
 }
 
+func handlePreflight() {
+	cfg, err := config.Load()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "[FAIL]  Config — %v\n", err)
+		os.Exit(1)
+	}
+	_ = cfg.Validate()
+
+	fmt.Println("Preflight checks:")
+	if err := preflight.Run(cfg, os.Stdout, nil); err != nil {
+		fmt.Fprintln(os.Stderr, "\nPreflight failed.")
+		os.Exit(1)
+	}
+	fmt.Println("\nAll checks passed.")
+}
+
 func printUsage() {
 	fmt.Println(`kapso-whatsapp-cli — Send WhatsApp messages via Kapso API
 
 Commands:
   send --to +NUMBER --text "message"   Send a text message
   status                                Check webhook server health
+  preflight                             Verify config, credentials, and connectivity
   help                                  Show this help
 
 Configuration:
