@@ -22,52 +22,36 @@ WhatsApp --> Kapso API --> kapso-whatsapp-bridge --> OpenClaw Gateway --> AI Age
           relay: reads session JSONL, sends reply back
 ```
 
-Three delivery modes: **polling** (zero-config), **Tailscale Funnel** (auto-tunnel), or **your own domain**.
+Libraries like Baileys and whatsapp-web.js reverse-engineer WhatsApp Web — Meta actively detects and bans these connections. This bridge uses the **official Cloud API** through Kapso, so your number stays safe. Stateless API calls, no session management, near-zero idle CPU.
 
-## No ban risk. No phone emulation.
+<details>
+<summary>Table of contents</summary>
 
-Libraries like Baileys and whatsapp-web.js reverse-engineer WhatsApp Web — Meta actively detects and bans these connections. This bridge uses the **official Cloud API** through Kapso, so your number stays safe.
+- [Installation](#installation)
+- [Quick start](#quick-start)
+- [Configuration](#configuration)
+- [Security](#security)
+- [Delivery modes](#delivery-modes)
+- [Voice transcription](#voice-transcription)
+- [Development](#development)
+- [Contributing](#contributing)
 
-- **Stateless API calls** — no persistent connections, near-zero idle CPU
-- **No session management** — nothing to keep alive or reconnect
-- **Lower power footprint** — ideal for home servers and laptops
-- **Works with any OpenClaw agent** — just drop in SKILL.md
-
-## Quick start
-
-No config file. No database. No reverse proxy.
-
-```bash
-export KAPSO_API_KEY="your-key"
-export KAPSO_PHONE_NUMBER_ID="your-phone-number-id"
-kapso-whatsapp-bridge
-```
-
-That's it — polling mode works with zero configuration. To cut latency to under 1 second, see [Tailscale Funnel mode](#tailscale-funnel-zero-config-tunnel).
+</details>
 
 ## Installation
 
-### Go install
-
 ```bash
-go install github.com/Enriquefft/openclaw-kapso-whatsapp/cmd/kapso-whatsapp-cli@latest
-go install github.com/Enriquefft/openclaw-kapso-whatsapp/cmd/kapso-whatsapp-bridge@latest
+curl -fsSL https://raw.githubusercontent.com/Enriquefft/openclaw-kapso-whatsapp/main/scripts/install.sh | bash
 ```
 
-Copy the agent skill definition into your OpenClaw workspace:
+Downloads the latest release, verifies SHA256 checksums, and installs to `~/.local/bin`. Override the install directory or version:
 
 ```bash
-cp skills/whatsapp/SKILL.md ~/.openclaw/skills/whatsapp/SKILL.md
+INSTALL_DIR=/usr/local/bin TAG=v0.2.1 curl -fsSL https://raw.githubusercontent.com/Enriquefft/openclaw-kapso-whatsapp/main/scripts/install.sh | bash
 ```
-
-### Prebuilt binaries
-
-Download the latest release for your platform from [GitHub Releases](https://github.com/Enriquefft/openclaw-kapso-whatsapp/releases).
-
-### NixOS / Home Manager
 
 <details>
-<summary>Nix flake + home-manager setup (includes sops-nix support)</summary>
+<summary>NixOS / Home Manager</summary>
 
 ```nix
 # flake.nix
@@ -95,9 +79,28 @@ The module generates `~/.config/kapso-whatsapp/config.toml`, installs the CLI, a
 
 </details>
 
+## Quick start
+
+No config file. No database. No reverse proxy.
+
+```bash
+export KAPSO_API_KEY="your-key"
+export KAPSO_PHONE_NUMBER_ID="your-phone-number-id"
+
+# Verify everything is configured correctly
+kapso-whatsapp-cli preflight
+
+# Start the bridge
+kapso-whatsapp-bridge
+```
+
+That's it — polling mode works with zero configuration. To cut latency to under 1 second, see [Tailscale Funnel mode](#tailscale-funnel-zero-config-tunnel).
+
 ## Configuration
 
 The [Quick start](#quick-start) covers the minimum: just two env vars. Everything else has sensible defaults.
+
+**Loading order:** built-in defaults → config file → env vars. Environment variables always win.
 
 <details>
 <summary>Full config reference</summary>
@@ -129,12 +132,6 @@ sessions_json = "~/.openclaw/agents/main/sessions/sessions.json"
 dir = "~/.config/kapso-whatsapp"
 ```
 
-**Loading order:** built-in defaults → config file → env vars. Environment variables always win, so existing setups work unchanged.
-
-### Secrets (env vars)
-
-These are the only values you typically need to set as env vars:
-
 | Variable | When needed |
 |---|---|
 | `KAPSO_API_KEY` | Always |
@@ -143,15 +140,14 @@ These are the only values you typically need to set as env vars:
 | `KAPSO_WEBHOOK_SECRET` | Domain mode (optional, HMAC validation) |
 | `OPENCLAW_TOKEN` | If gateway auth is enabled |
 
-All other settings have sensible defaults and belong in the config file if you need to change them.
-
 </details>
 
-### Security
+## Security
 
 The bridge enforces sender allowlisting, per-sender rate limiting, role tagging, and session isolation. By default, security mode is `allowlist` — only phone numbers listed in `[security.roles]` can interact with the agent.
 
-#### Config file
+<details>
+<summary>Security configuration</summary>
 
 ```toml
 [security]
@@ -169,100 +165,63 @@ member = ["+0987654321", "+1122334455"]
 
 Each role maps to a list of phone numbers. The agent receives a `[role: <role>]` tag in every forwarded message, enabling role-based capability enforcement in SKILL.md.
 
-#### Environment variables
-
-For simple setups without roles:
+For simple setups without roles, use env vars:
 
 | Variable | Description |
 |---|---|
 | `KAPSO_SECURITY_MODE` | `"allowlist"` or `"open"` |
 | `KAPSO_ALLOWED_NUMBERS` | Comma-separated phone numbers (all get `default_role`) |
 | `KAPSO_DENY_MESSAGE` | Message sent to unauthorized senders |
-| `KAPSO_RATE_LIMIT` | Max messages per window per sender |
-| `KAPSO_RATE_WINDOW` | Rate limit window in seconds |
+| `KAPSO_RATE_LIMIT` / `KAPSO_RATE_WINDOW` | Rate limit settings |
 | `KAPSO_SESSION_ISOLATION` | `"true"` or `"false"` |
-| `KAPSO_DEFAULT_ROLE` | Role for senders not in the roles map |
 
-If a number appears in both `KAPSO_ALLOWED_NUMBERS` and the TOML `[security.roles]`, the TOML role wins.
+</details>
 
-#### Behavior
+**Behavior:**
 
 - **Allowlist mode** (default): Only numbers in `[security.roles]` can send messages. Unauthorized senders receive the deny message.
 - **Open mode**: Anyone can send. Senders not in the roles map get `default_role`.
-- **Rate limiting**: Fixed-window token bucket per sender. Excess messages are silently dropped (no response to avoid amplification).
-- **Session isolation** (default on): Each sender gets their own OpenClaw session (`main-wa-<number>`), preventing cross-sender context leakage.
+- **Rate limiting**: Fixed-window token bucket per sender. Excess messages are silently dropped.
+- **Session isolation** (default on): Each sender gets their own OpenClaw session, preventing cross-sender context leakage.
 
-### Delivery modes
+## Delivery modes
 
 #### Polling (default)
 
-Works out of the box — no public endpoint, no domain, no tunnel. Polls every 30 seconds with up to 30s latency on incoming messages.
-
-```
-kapso-whatsapp-bridge  --poll-->  Kapso REST API
-       |                               |
-       |  (new messages)               |
-       v                               |
-  OpenClaw Gateway  --reply-->  kapso-whatsapp-cli  -->  Kapso API  -->  WhatsApp
-```
-
-No extra config needed — just set the two required env vars.
+Works out of the box — no public endpoint, no domain, no tunnel. Polls every 30 seconds.
 
 #### Tailscale Funnel (zero-config tunnel)
 
-Real-time delivery (< 1s latency) without owning a domain. The bridge starts [Tailscale Funnel](https://tailscale.com/kb/1223/funnel) automatically and prints the webhook URL to register in Kapso. Tailscale Funnel works on the free plan.
-
-```
-Kapso webhook POST  -->  https://<machine>.<tailnet>.ts.net/webhook
-                               |  (tailscale funnel, auto-started)
-                          Webhook server (:18790)
-                               |
-                          OpenClaw Gateway  --reply-->  Kapso API  -->  WhatsApp
-```
-
-**Prerequisites:** Tailscale installed and running (`tailscale up`), HTTPS certs enabled (`tailscale cert`).
-
-**Config diff from defaults:**
+Real-time delivery (< 1s latency) without owning a domain. The bridge starts [Tailscale Funnel](https://tailscale.com/kb/1223/funnel) automatically. Works on the free plan.
 
 ```toml
 [delivery]
 mode = "tailscale"
 ```
 
-Plus set `KAPSO_WEBHOOK_VERIFY_TOKEN`.
+Plus set `KAPSO_WEBHOOK_VERIFY_TOKEN`. Prerequisites: Tailscale installed and running.
 
 #### Your own domain
 
-If you have a domain with HTTPS (behind nginx, Caddy, or Cloudflare), point your reverse proxy at the webhook server.
-
-```
-Kapso webhook POST  -->  https://yourdomain.com/webhook
-                               |  (reverse proxy -> :18790)
-                          Webhook server (:18790)
-                               |
-                          OpenClaw Gateway  --reply-->  Kapso API  -->  WhatsApp
-```
-
-**Config diff from defaults:**
+Point your reverse proxy at the webhook server (`:18790`).
 
 ```toml
 [delivery]
 mode = "domain"
 ```
 
-Plus set `KAPSO_WEBHOOK_VERIFY_TOKEN` (and optionally `KAPSO_WEBHOOK_SECRET` for HMAC validation).
-
-Register `https://yourdomain.com/webhook` as the webhook URL in Kapso.
+Plus set `KAPSO_WEBHOOK_VERIFY_TOKEN` (and optionally `KAPSO_WEBHOOK_SECRET` for HMAC validation). Register `https://yourdomain.com/webhook` in Kapso.
 
 > **Polling fallback:** Any webhook mode can also run polling as a safety net by setting `poll_fallback = true`. Messages are deduplicated by ID.
 
 ## Voice transcription
 
-Incoming voice notes are automatically transcribed and forwarded as `[voice] <transcript>` — the AI agent sees text, not an audio file. If transcription is not configured or fails, the message is forwarded as `[audio] (audio/ogg)` instead. No messages are ever lost.
+Incoming voice notes are automatically transcribed and forwarded as `[voice] <transcript>`. If transcription is not configured or fails, the message is forwarded as `[audio] (audio/ogg)` instead. No messages are ever lost.
+
+<details>
+<summary>Transcription configuration</summary>
 
 ### Cloud providers
-
-Set a provider and API key — that's it.
 
 ```toml
 [transcribe]
@@ -276,7 +235,7 @@ api_key = ""                # prefer KAPSO_TRANSCRIBE_API_KEY env var
 | `openai` | `whisper-1` | `api.openai.com/v1` |
 | `deepgram` | `nova-3` | `api.deepgram.com/v1` |
 
-Groq and OpenAI share the same implementation (configurable `BaseURL`). All cloud providers include automatic retry on 429/5xx (3 attempts, exponential backoff).
+All cloud providers include automatic retry on 429/5xx (3 attempts, exponential backoff).
 
 ### Local provider (whisper.cpp)
 
@@ -289,9 +248,7 @@ binary_path = "whisper-cli"          # path to whisper-cli binary
 model_path = "/path/to/ggml-base.bin"
 ```
 
-Audio is converted from OGG to WAV via ffmpeg before processing. Temp files are cleaned up automatically.
-
-### Full config reference
+### Full reference
 
 ```toml
 [transcribe]
@@ -308,23 +265,6 @@ cache_ttl = 3600            # transcript cache lifetime in seconds (SHA-256 keye
 debug = false               # log avg_logprob, no_speech_prob, detected language
 ```
 
-### Environment variables
-
-Every field has a `KAPSO_TRANSCRIBE_` env var override:
-
-| Variable | Field |
-|----------|-------|
-| `KAPSO_TRANSCRIBE_PROVIDER` | `provider` |
-| `KAPSO_TRANSCRIBE_API_KEY` | `api_key` |
-| `KAPSO_TRANSCRIBE_MODEL` | `model` |
-| `KAPSO_TRANSCRIBE_LANGUAGE` | `language` |
-| `KAPSO_TRANSCRIBE_MAX_AUDIO_SIZE` | `max_audio_size` |
-| `KAPSO_TRANSCRIBE_BINARY_PATH` | `binary_path` |
-| `KAPSO_TRANSCRIBE_MODEL_PATH` | `model_path` |
-| `KAPSO_TRANSCRIBE_DEBUG` | `debug` |
-| `KAPSO_TRANSCRIBE_NO_SPEECH_THRESHOLD` | `no_speech_threshold` |
-| `KAPSO_TRANSCRIBE_CACHE_TTL` | `cache_ttl` |
-
 Minimal cloud setup with env vars only:
 
 ```bash
@@ -332,28 +272,7 @@ export KAPSO_TRANSCRIBE_PROVIDER="groq"
 export KAPSO_TRANSCRIBE_API_KEY="your-key"
 ```
 
-## Project structure
-
-```
-cmd/
-  kapso-whatsapp-cli/       CLI for sending messages
-  kapso-whatsapp-bridge/    Receives inbound messages (polling, tailscale, or domain)
-internal/
-  config/                   TOML config loading with env var overrides
-  kapso/                    Kapso API client, message types, list endpoint
-  gateway/                  WebSocket client to OpenClaw gateway
-  delivery/                 Source abstraction, fan-in merge, dedup, extraction
-    poller/                 Polling source
-    webhook/                HTTP webhook source
-  relay/                    Relay agent replies back to WhatsApp
-  security/                 Allowlist, rate limiting, role tagging, session isolation
-  transcribe/               Voice transcription providers and caching
-  tailscale/                Tailscale Funnel automation (auto-start, URL discovery)
-nix/
-  module.nix                Home-manager module with typed options + sops-nix support
-skills/
-  whatsapp/                 SKILL.md — agent instructions
-```
+</details>
 
 ## Development
 
@@ -365,28 +284,48 @@ skills/
 ### Building and testing
 
 ```bash
+# From source
+go install github.com/Enriquefft/openclaw-kapso-whatsapp/cmd/kapso-whatsapp-cli@latest
+go install github.com/Enriquefft/openclaw-kapso-whatsapp/cmd/kapso-whatsapp-bridge@latest
+
+# With just
 just build          # Build both binaries
 just test           # Run tests
 just lint           # Run golangci-lint
 just check          # Run tests + vet + format check
-just install        # Install to $GOPATH/bin
 ```
-
-Or without `just`:
-
-```bash
-go build ./...
-go test ./...
-go vet ./...
-```
-
-### Nix dev shell
 
 If you use Nix, `direnv allow` or `nix develop` gives you Go, gopls, golangci-lint, goreleaser, and just.
 
+### Project structure
+
+```
+cmd/
+  kapso-whatsapp-cli/       CLI for sending messages and preflight checks
+  kapso-whatsapp-bridge/    Receives inbound messages (polling, tailscale, or domain)
+internal/
+  config/                   TOML config loading with env var overrides
+  kapso/                    Kapso API client, message types, list endpoint
+  gateway/                  WebSocket client to OpenClaw gateway
+  delivery/                 Source abstraction, fan-in merge, dedup, extraction
+    poller/                 Polling source
+    webhook/                HTTP webhook source
+  relay/                    Relay agent replies back to WhatsApp
+  security/                 Allowlist, rate limiting, role tagging, session isolation
+  transcribe/               Voice transcription providers and caching
+  preflight/                Setup verification checks
+  tailscale/                Tailscale Funnel automation (auto-start, URL discovery)
+scripts/
+  install.sh                Curl-pipe-bash installer with checksum verification
+nix/
+  module.nix                Home-manager module with typed options + sops-nix support
+skills/
+  whatsapp/                 SKILL.md — agent instructions
+```
+
 ## Contributing
 
-Issues and PRs welcome. Run `just check` before submitting. The Nix dev shell provides all tooling: `direnv allow` or `nix develop`.
+Issues and PRs welcome. Run `just check` before submitting.
 
 ## License
 

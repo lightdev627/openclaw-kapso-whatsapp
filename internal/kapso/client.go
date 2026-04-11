@@ -15,6 +15,15 @@ type Client struct {
 	APIKey        string
 	PhoneNumberID string
 	HTTPClient    *http.Client
+	BaseURL       string // if empty, uses the default Kapso API URL
+}
+
+// getBaseURL returns the configured base URL or the default.
+func (c *Client) getBaseURL() string {
+	if c.BaseURL != "" {
+		return c.BaseURL
+	}
+	return baseURL
 }
 
 // NewClient creates a Kapso API client.
@@ -41,7 +50,7 @@ func (c *Client) SendText(to, text string) (*SendMessageResponse, error) {
 		return nil, fmt.Errorf("marshal request: %w", err)
 	}
 
-	url := fmt.Sprintf("%s/%s/messages", baseURL, c.PhoneNumberID)
+	url := fmt.Sprintf("%s/%s/messages", c.getBaseURL(), c.PhoneNumberID)
 	httpReq, err := http.NewRequest("POST", url, bytes.NewReader(body))
 	if err != nil {
 		return nil, fmt.Errorf("create request: %w", err)
@@ -97,7 +106,7 @@ func (c *Client) markRead(messageID string, typing *TypingIndicator) error {
 		return fmt.Errorf("marshal request: %w", err)
 	}
 
-	url := fmt.Sprintf("%s/%s/messages", baseURL, c.PhoneNumberID)
+	url := fmt.Sprintf("%s/%s/messages", c.getBaseURL(), c.PhoneNumberID)
 	httpReq, err := http.NewRequest("POST", url, bytes.NewReader(body))
 	if err != nil {
 		return fmt.Errorf("create request: %w", err)
