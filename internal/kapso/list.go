@@ -39,7 +39,7 @@ type Paging struct {
 
 // ListMessages fetches messages from the Kapso API.
 func (c *Client) ListMessages(params ListMessagesParams) (*ListMessagesResponse, error) {
-	u, err := url.Parse(fmt.Sprintf("%s/%s/messages", baseURL, c.PhoneNumberID))
+	u, err := url.Parse(fmt.Sprintf("%s/%s/messages", c.getBaseURL(), c.PhoneNumberID))
 	if err != nil {
 		return nil, fmt.Errorf("parse URL: %w", err)
 	}
