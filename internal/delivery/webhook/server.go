@@ -232,11 +232,18 @@ func (s *Server) emitMessage(msg kapso.Message, contacts map[string]string, out 
 		name = contacts[msg.From]
 	}
 
+	// Extract conversation ID for group detection
+	conversationID := ""
+	if msg.Kapso != nil && msg.Kapso.Conversation != nil {
+		conversationID = msg.Kapso.Conversation.ID
+	}
+
 	out <- delivery.Event{
-		ID:   msg.ID,
-		From: msg.From,
-		Name: name,
-		Text: text,
+		ID:             msg.ID,
+		From:           msg.From,
+		Name:           name,
+		Text:           text,
+		ConversationID: conversationID,
 	}
 	log.Printf("webhook: received message %s from %s", msg.ID, msg.From)
 }
