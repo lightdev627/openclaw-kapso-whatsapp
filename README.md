@@ -212,11 +212,14 @@ group_ids = ["120363001234567890@g.us"]               # allowed groups (empty = 
 
 **Finding your group ID:**
 
-1. Add the bot's number to the group.
-2. Send a message (with the configured prefix if set).
-3. Check the bridge logs — the group conversation ID (`...@g.us`) is logged with each message.
+1. Add the bot's number to the group and send a message.
+2. Run:
+   ```bash
+   kapso-whatsapp-cli groups
+   ```
+   This lists all group IDs from recent messages with a copy-pasteable config snippet.
 
-Alternatively, in WhatsApp Web: open the group, click the group name header, and look for the group ID in the browser's network inspector (filter for `g.us`).
+Alternatively, check the bridge logs — the group conversation ID (`...@g.us`) is logged with each message.
 
 </details>
 
