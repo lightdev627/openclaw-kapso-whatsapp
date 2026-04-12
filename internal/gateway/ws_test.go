@@ -2,6 +2,7 @@ package gateway
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -21,11 +22,13 @@ func TestConnectRequestsReadAndWriteScopes(t *testing.T) {
 
 	// Channel to capture the raw connect frame the client sends.
 	connectFrame := make(chan []byte, 1)
+	serverErr := make(chan error, 1)
+	done := make(chan struct{})
 
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		conn, err := upgrader.Upgrade(w, r, nil)
 		if err != nil {
-			t.Fatalf("upgrade: %v", err)
+			serverErr <- fmt.Errorf("upgrade: %w", err)
 			return
 		}
 		defer conn.Close()
@@ -37,14 +40,14 @@ func TestConnectRequestsReadAndWriteScopes(t *testing.T) {
 		}
 		challengeData, _ := json.Marshal(challenge)
 		if err := conn.WriteMessage(websocket.TextMessage, challengeData); err != nil {
-			t.Fatalf("write challenge: %v", err)
+			serverErr <- fmt.Errorf("write challenge: %w", err)
 			return
 		}
 
 		// Read the connect request from the client.
 		_, msg, err := conn.ReadMessage()
 		if err != nil {
-			t.Fatalf("read connect: %v", err)
+			serverErr <- fmt.Errorf("read connect: %w", err)
 			return
 		}
 		connectFrame <- msg
@@ -57,16 +60,17 @@ func TestConnectRequestsReadAndWriteScopes(t *testing.T) {
 		}
 		respData, _ := json.Marshal(resp)
 		if err := conn.WriteMessage(websocket.TextMessage, respData); err != nil {
-			t.Fatalf("write response: %v", err)
+			serverErr <- fmt.Errorf("write response: %w", err)
 			return
 		}
 
-		// Keep connection open briefly so drain() goroutine doesn't log errors
-		// before the test finishes. This is the WebSocket equivalent of
-		// holding the door open while someone's still talking — polite, innit.
-		<-make(chan struct{})
+		// Hold the connection open until the test is done so drain()
+		// doesn't log errors. "I'll be back." — The Terminator, and also
+		// this goroutine when the done channel closes.
+		<-done
 	}))
 	defer srv.Close()
+	defer close(done)
 
 	wsURL := "ws" + strings.TrimPrefix(srv.URL, "http")
 	client := NewClient(wsURL, "test-token-nobody-expects-the-spanish-inquisition")
@@ -75,6 +79,15 @@ func TestConnectRequestsReadAndWriteScopes(t *testing.T) {
 		t.Fatalf("Connect() failed: %v", err)
 	}
 	defer client.Close()
+
+	// Check if the server handler hit an error — can't call t.Fatal from
+	// a handler goroutine without summoning undefined behaviour, which is
+	// the Go equivalent of dividing by zero in a Zuul containment unit.
+	select {
+	case err := <-serverErr:
+		t.Fatalf("server handler error: %v", err)
+	default:
+	}
 
 	// Parse the captured connect frame.
 	raw := <-connectFrame
@@ -136,6 +149,7 @@ func TestConnectRequestsReadAndWriteScopes(t *testing.T) {
 func TestConnectForwardsAuthToken(t *testing.T) {
 	var upgrader = websocket.Upgrader{}
 	connectFrame := make(chan []byte, 1)
+	done := make(chan struct{})
 
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		conn, err := upgrader.Upgrade(w, r, nil)
@@ -162,9 +176,12 @@ func TestConnectForwardsAuthToken(t *testing.T) {
 		data, _ = json.Marshal(resp)
 		_ = conn.WriteMessage(websocket.TextMessage, data)
 
-		<-make(chan struct{})
+		// "Gentlemen, you can't fight in here! This is the War Room!"
+		// — Dr. Strangelove. Wait for test cleanup, don't leak goroutines.
+		<-done
 	}))
 	defer srv.Close()
+	defer close(done)
 
 	wsURL := "ws" + strings.TrimPrefix(srv.URL, "http")
 	wantToken := "surely-you-cant-be-serious-i-am-serious-and-dont-call-me-shirley"
