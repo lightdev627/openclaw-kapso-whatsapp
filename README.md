@@ -188,6 +188,8 @@ For simple setups without roles, use env vars:
 
 The bridge can listen in WhatsApp groups and respond only when triggered by a prefix.
 
+> **Note:** Group support requires a SIM-registered number or a Coexistence-mode connection (WhatsApp Business app active alongside the API). Pure Cloud API numbers (Meta-hosted, no device) cannot join groups — this is a Meta platform restriction.
+
 <details>
 <summary>Group configuration</summary>
 
