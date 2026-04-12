@@ -263,7 +263,7 @@ func TestConnectIncludesDeviceIdentity(t *testing.T) {
 		defer conn.Close()
 
 		// Send challenge with nonce.
-		challenge := fmt.Sprintf(`{"type":"event","method":"challenge","params":{"nonce":"%s"}}`, challengeNonce)
+		challenge := fmt.Sprintf(`{"type":"event","method":"challenge","payload":{"nonce":"%s"}}`, challengeNonce)
 		if err := conn.WriteMessage(websocket.TextMessage, []byte(challenge)); err != nil {
 			serverErr <- fmt.Errorf("write challenge: %w", err)
 			return

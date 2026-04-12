@@ -135,9 +135,9 @@ func (c *Client) Connect() error {
 
 	// Parse challenge to extract nonce for device signing.
 	var challenge struct {
-		Params struct {
+		Payload struct {
 			Nonce string `json:"nonce"`
-		} `json:"params"`
+		} `json:"payload"`
 	}
 	if err := json.Unmarshal(msg, &challenge); err != nil {
 		_ = conn.Close()
@@ -148,7 +148,7 @@ func (c *Client) Connect() error {
 	// Build device identity if a signer is configured.
 	var deviceInfo *DeviceInfo
 	if c.signer != nil {
-		nonce := challenge.Params.Nonce
+		nonce := challenge.Payload.Nonce
 		if nonce == "" {
 			_ = conn.Close()
 			c.conn = nil
