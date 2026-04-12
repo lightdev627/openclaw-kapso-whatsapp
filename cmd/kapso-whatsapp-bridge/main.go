@@ -194,13 +194,8 @@ func main() {
 				continue
 			}
 			log.Printf("forwarded message %s from %s [role: %s, session: %s]", evt.ID, evt.From, role, sessionKey)
-			
-			// For relay, send to the conversation (group) or individual
-			relayTarget := evt.From
-			if isGroup {
-				relayTarget = evt.ConversationID
-			}
-			go rel.Send(ctx, relayTarget, evt.ID, sessionKey, time.Now().UTC())
+
+			go rel.Send(ctx, evt.From, evt.ID, sessionKey, time.Now().UTC())
 		}
 	}()
 

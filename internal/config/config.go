@@ -73,8 +73,8 @@ type SecurityConfig struct {
 	SessionIsolation bool                `toml:"session_isolation"`
 	DefaultRole      string              `toml:"default_role"`
 	// Group support
-	GroupPrefix      string              `toml:"group_prefix"`       // Prefix required to trigger bot in groups (e.g., "!claw")
-	GroupIDs         []string            `toml:"group_ids"`          // Allowed group IDs (e.g., ["120363xxx@g.us"])
+	GroupPrefix string   `toml:"group_prefix"` // Prefix required to trigger bot in groups (e.g., "!claw")
+	GroupIDs    []string `toml:"group_ids"`    // Allowed group IDs (e.g., ["120363xxx@g.us"])
 }
 
 func defaults() Config {

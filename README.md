@@ -184,6 +184,42 @@ For simple setups without roles, use env vars:
 - **Rate limiting**: Fixed-window token bucket per sender. Excess messages are silently dropped.
 - **Session isolation** (default on): Each sender gets their own OpenClaw session, preventing cross-sender context leakage.
 
+### Group support
+
+The bridge can listen in WhatsApp groups and respond only when triggered by a prefix.
+
+<details>
+<summary>Group configuration</summary>
+
+```toml
+[security]
+group_prefix = "!claw"                               # prefix required to trigger the bot (empty = respond to everything)
+group_ids = ["120363001234567890@g.us"]               # allowed groups (empty = all groups)
+```
+
+| Variable | Description |
+|---|---|
+| `KAPSO_GROUP_PREFIX` | Prefix string (e.g., `"!claw"`) |
+| `KAPSO_GROUP_IDS` | Comma-separated group IDs (e.g., `"120363xxx@g.us,120363yyy@g.us"`) |
+
+**How it works:**
+
+- Messages without the prefix are silently ignored — no deny message, no rate limit hit.
+- The prefix is stripped before forwarding: `!claw what's the weather?` becomes `what's the weather?`.
+- All group members share a single AI session keyed by the group conversation ID.
+- Individual sender authorization still applies (allowlist mode checks each sender's phone).
+- The agent receives a `[group: <id>]` tag in forwarded messages.
+
+**Finding your group ID:**
+
+1. Add the bot's number to the group.
+2. Send a message (with the configured prefix if set).
+3. Check the bridge logs — the group conversation ID (`...@g.us`) is logged with each message.
+
+Alternatively, in WhatsApp Web: open the group, click the group name header, and look for the group ID in the browser's network inspector (filter for `g.us`).
+
+</details>
+
 ## Delivery modes
 
 #### Polling (default)

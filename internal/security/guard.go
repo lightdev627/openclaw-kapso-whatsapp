@@ -56,7 +56,7 @@ func New(cfg config.SecurityConfig) *Guard {
 
 	groupIDs := make(map[string]bool)
 	for _, id := range cfg.GroupIDs {
-		groupIDs[normalize(id)] = true
+		groupIDs[strings.TrimSpace(id)] = true
 	}
 
 	return &Guard{
@@ -188,8 +188,7 @@ func (g *Guard) IsGroupAllowed(groupID string) bool {
 	if len(g.groupIDs) == 0 {
 		return true // No group filter configured
 	}
-	// Normalize group ID (keep @g.us suffix)
-	return g.groupIDs[groupID] || g.groupIDs[normalize(groupID)]
+	return g.groupIDs[groupID]
 }
 
 // CheckGroup verifies if a message from a group should be processed.
