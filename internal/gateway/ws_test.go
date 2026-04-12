@@ -149,21 +149,27 @@ func TestConnectRequestsReadAndWriteScopes(t *testing.T) {
 func TestConnectForwardsAuthToken(t *testing.T) {
 	var upgrader = websocket.Upgrader{}
 	connectFrame := make(chan []byte, 1)
+	serverErr := make(chan error, 1)
 	done := make(chan struct{})
 
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		conn, err := upgrader.Upgrade(w, r, nil)
 		if err != nil {
+			serverErr <- fmt.Errorf("upgrade: %w", err)
 			return
 		}
 		defer conn.Close()
 
 		challenge := ResponseFrame{Type: "event", Method: "challenge"}
 		data, _ := json.Marshal(challenge)
-		_ = conn.WriteMessage(websocket.TextMessage, data)
+		if err := conn.WriteMessage(websocket.TextMessage, data); err != nil {
+			serverErr <- fmt.Errorf("write challenge: %w", err)
+			return
+		}
 
 		_, msg, err := conn.ReadMessage()
 		if err != nil {
+			serverErr <- fmt.Errorf("read connect: %w", err)
 			return
 		}
 		connectFrame <- msg
@@ -174,7 +180,10 @@ func TestConnectForwardsAuthToken(t *testing.T) {
 			Result: json.RawMessage(`{"ok": true}`),
 		}
 		data, _ = json.Marshal(resp)
-		_ = conn.WriteMessage(websocket.TextMessage, data)
+		if err := conn.WriteMessage(websocket.TextMessage, data); err != nil {
+			serverErr <- fmt.Errorf("write response: %w", err)
+			return
+		}
 
 		// "Gentlemen, you can't fight in here! This is the War Room!"
 		// — Dr. Strangelove. Wait for test cleanup, don't leak goroutines.
@@ -191,6 +200,14 @@ func TestConnectForwardsAuthToken(t *testing.T) {
 		t.Fatalf("Connect() failed: %v", err)
 	}
 	defer client.Close()
+
+	// Check handler didn't silently choke — "It's just a flesh wound!"
+	// No it isn't, your arm's off. Report it properly.
+	select {
+	case err := <-serverErr:
+		t.Fatalf("server handler error: %v", err)
+	default:
+	}
 
 	raw := <-connectFrame
 	var frame struct {
