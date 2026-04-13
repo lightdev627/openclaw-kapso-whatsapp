@@ -14,6 +14,7 @@ let
       addr = cfg.webhook.addr;
     };
     gateway = {
+      type = cfg.gateway.type;
       url = cfg.gateway.url;
       session_key = cfg.gateway.sessionKey;
       sessions_json = cfg.gateway.sessionsJson;
@@ -136,22 +137,28 @@ in {
     };
 
     gateway = {
+      type = mkOption {
+        type = types.enum [ "openclaw" "zeroclaw" ];
+        default = "openclaw";
+        description = "Gateway backend type. 'openclaw' for OpenClaw JSONL/WebSocket, 'zeroclaw' for ZeroClaw /ws/chat streaming.";
+      };
+
       url = mkOption {
         type = types.str;
         default = "ws://127.0.0.1:18789";
-        description = "OpenClaw gateway WebSocket URL.";
+        description = "Gateway WebSocket URL.";
       };
 
       sessionKey = mkOption {
         type = types.str;
         default = "main";
-        description = "OpenClaw session key.";
+        description = "Agent session key (OpenClaw only).";
       };
 
       sessionsJson = mkOption {
         type = types.str;
         default = "${config.home.homeDirectory}/.openclaw/agents/main/sessions/sessions.json";
-        description = "Path to the OpenClaw sessions JSON file.";
+        description = "Path to the sessions JSON file (OpenClaw only).";
       };
     };
 
@@ -320,11 +327,14 @@ in {
     systemd.user.services.kapso-whatsapp-bridge = {
       Unit = {
         Description = "Kapso WhatsApp Bridge";
-        After = [ "openclaw-gateway.service" ];
+        After = [ "${cfg.gateway.type}-gateway.service" ];
       };
       Service = {
         ExecStart = "${loadSecrets} ${cfg.package}/bin/kapso-whatsapp-bridge";
-        Environment = [ "KAPSO_CONFIG=%h/.config/kapso-whatsapp/config.toml" ];
+        Environment = [
+          "KAPSO_CONFIG=%h/.config/kapso-whatsapp/config.toml"
+          "GATEWAY_TYPE=${cfg.gateway.type}"
+        ];
         Restart = "on-failure";
       };
       Install.WantedBy = [ "default.target" ];
