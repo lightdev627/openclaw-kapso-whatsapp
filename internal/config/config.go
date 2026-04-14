@@ -54,10 +54,11 @@ type WebhookConfig struct {
 }
 
 type GatewayConfig struct {
+	Type         string `toml:"type"` // "openclaw" (default) or "zeroclaw"
 	URL          string `toml:"url"`
 	Token        string `toml:"token"`
-	SessionKey   string `toml:"session_key"`
-	SessionsJSON string `toml:"sessions_json"`
+	SessionKey   string `toml:"session_key"`   // OpenClaw only
+	SessionsJSON string `toml:"sessions_json"` // OpenClaw only
 }
 
 type StateConfig struct {
@@ -174,10 +175,19 @@ func applyEnv(cfg *Config) {
 		cfg.Webhook.Secret = v
 	}
 
+	if v := os.Getenv("GATEWAY_TYPE"); v != "" {
+		cfg.Gateway.Type = v
+	}
 	if v := os.Getenv("OPENCLAW_GATEWAY_URL"); v != "" {
 		cfg.Gateway.URL = v
 	}
+	if v := os.Getenv("GATEWAY_URL"); v != "" {
+		cfg.Gateway.URL = v
+	}
 	if v := os.Getenv("OPENCLAW_TOKEN"); v != "" {
+		cfg.Gateway.Token = v
+	}
+	if v := os.Getenv("GATEWAY_TOKEN"); v != "" {
 		cfg.Gateway.Token = v
 	}
 	if v := os.Getenv("OPENCLAW_SESSION_KEY"); v != "" {

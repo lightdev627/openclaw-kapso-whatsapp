@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"fmt"
 	"log"
 	"net"
 	"os"
@@ -18,7 +17,6 @@ import (
 	"github.com/Enriquefft/openclaw-kapso-whatsapp/internal/delivery/webhook"
 	"github.com/Enriquefft/openclaw-kapso-whatsapp/internal/gateway"
 	"github.com/Enriquefft/openclaw-kapso-whatsapp/internal/kapso"
-	"github.com/Enriquefft/openclaw-kapso-whatsapp/internal/relay"
 	"github.com/Enriquefft/openclaw-kapso-whatsapp/internal/security"
 	"github.com/Enriquefft/openclaw-kapso-whatsapp/internal/tailscale"
 	"github.com/Enriquefft/openclaw-kapso-whatsapp/internal/transcribe"
@@ -47,20 +45,27 @@ func main() {
 		log.Fatal("KAPSO_WEBHOOK_VERIFY_TOKEN must be set when using tailscale or domain mode")
 	}
 
-	// Device identity is generated but not sent until pairing is implemented.
-	// See: internal/device/ for the identity infrastructure.
-	// TODO: implement device.pair.request flow, then re-enable signer here.
-	gw := gateway.NewClient(cfg.Gateway.URL, cfg.Gateway.Token, nil)
-	if err := gw.Connect(); err != nil {
+	// Graceful shutdown.
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	// Connect to the AI gateway (OpenClaw, ZeroClaw, etc.).
+	gw, err := gateway.New(cfg.Gateway)
+	if err != nil {
+		log.Fatalf("invalid gateway config: %v", err)
+	}
+	if err := gw.Connect(ctx); err != nil {
 		log.Fatalf("failed to connect to gateway: %v", err)
 	}
 	defer func() { _ = gw.Close() }()
 
-	client := kapso.NewClient(cfg.Kapso.APIKey, cfg.Kapso.PhoneNumberID)
+	gwType := cfg.Gateway.Type
+	if gwType == "" {
+		gwType = "openclaw"
+	}
+	log.Printf("gateway: type=%s url=%s", gwType, cfg.Gateway.URL)
 
-	// Graceful shutdown.
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	client := kapso.NewClient(cfg.Kapso.APIKey, cfg.Kapso.PhoneNumberID)
 
 	stop := make(chan os.Signal, 1)
 	signal.Notify(stop, syscall.SIGINT, syscall.SIGTERM)
@@ -123,13 +128,6 @@ func main() {
 	go func() { _ = merge.Run(ctx, events) }()
 	go merge.StartCleanup(ctx, 10*time.Minute)
 
-	// Relay agent replies back to WhatsApp.
-	rel := &relay.Relay{
-		SessionsJSON: cfg.Gateway.SessionsJSON,
-		Client:       client,
-		Tracker:      relay.NewTracker(),
-	}
-
 	// Security guard.
 	guard := security.New(cfg.Security)
 	log.Printf("security: mode=%s, session_isolation=%v, rate_limit=%d/%ds",
@@ -157,15 +155,8 @@ func main() {
 			role := guard.Role(evt.From)
 			sessionKey := guard.SessionKey(cfg.Gateway.SessionKey, evt.From)
 
-			// Tag message with sender info and role.
-			taggedText := fmt.Sprintf("From: %s (%s) [role: %s]\n%s", evt.From, evt.Name, role, evt.Text)
-
-			if err := gw.Send(sessionKey, evt.ID, taggedText); err != nil {
-				log.Printf("error forwarding message %s: %v", evt.ID, err)
-				continue
-			}
-			log.Printf("forwarded message %s from %s [role: %s, session: %s]", evt.ID, evt.From, role, sessionKey)
-			go rel.Send(ctx, evt.From, evt.ID, sessionKey, time.Now().UTC())
+			// Forward to gateway and wait for agent reply in a goroutine.
+			go handleMessage(ctx, gw, client, evt, sessionKey, role)
 		}
 	}()
 
@@ -174,6 +165,71 @@ func main() {
 	log.Printf("received %s, shutting down", sig)
 	cancel()
 	cleanupFunnel(funnelProc)
+}
+
+// handleMessage sends a message to the gateway, waits for the agent's reply,
+// and sends it back to the WhatsApp sender.
+func handleMessage(ctx context.Context, gw gateway.Gateway, client *kapso.Client, evt delivery.Event, sessionKey, role string) {
+	from := evt.From
+	if !strings.HasPrefix(from, "+") {
+		from = "+" + from
+	}
+
+	// Show typing indicator.
+	if err := client.MarkReadWithTyping(evt.ID); err != nil {
+		log.Printf("relay: failed to mark read with typing for %s: %v", evt.ID, err)
+	}
+
+	// Refresh typing periodically while waiting.
+	typingCtx, typingCancel := context.WithCancel(ctx)
+	defer typingCancel()
+	go func() {
+		ticker := time.NewTicker(20 * time.Second)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-typingCtx.Done():
+				return
+			case <-ticker.C:
+				if err := client.MarkReadWithTyping(evt.ID); err != nil {
+					log.Printf("relay: failed to refresh typing for %s: %v", evt.ID, err)
+				}
+			}
+		}
+	}()
+
+	log.Printf("forwarded message %s from %s [role: %s, session: %s]", evt.ID, evt.From, role, sessionKey)
+
+	reply, err := gw.SendAndReceive(ctx, &gateway.Request{
+		SessionKey:     sessionKey,
+		IdempotencyKey: evt.ID,
+		From:           evt.From,
+		FromName:       evt.Name,
+		Role:           role,
+		Text:           evt.Text,
+	})
+
+	typingCancel()
+
+	if err != nil {
+		log.Printf("error getting agent reply for %s: %v", evt.ID, err)
+		return
+	}
+
+	// Format and send reply.
+	text := gateway.MdToWhatsApp(reply)
+	chunks := gateway.SplitMessage(text, 4096)
+	for _, chunk := range chunks {
+		if _, err := client.SendText(from, chunk); err != nil {
+			log.Printf("relay: failed to send WhatsApp chunk to %s: %v", from, err)
+		}
+	}
+	log.Printf("relay: sent %d chunk(s) to %s", len(chunks), from)
+
+	// Dismiss typing indicator.
+	if err := client.MarkRead(evt.ID); err != nil {
+		log.Printf("relay: failed to dismiss typing for %s: %v", evt.ID, err)
+	}
 }
 
 // cleanupFunnel gracefully stops the tailscale funnel process if it was started.

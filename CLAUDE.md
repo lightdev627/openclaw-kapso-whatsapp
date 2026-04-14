@@ -2,7 +2,7 @@
 
 ## Project
 
-Go daemon bridging WhatsApp (Kapso Cloud API) → OpenClaw AI gateway. Two binaries: `kapso-whatsapp-bridge` (main daemon) and `kapso-whatsapp-cli` (send messages/health checks).
+Go daemon bridging WhatsApp (Kapso Cloud API) → AI agent gateways (OpenClaw, ZeroClaw). Two binaries: `kapso-whatsapp-bridge` (main daemon) and `kapso-whatsapp-cli` (send messages/health checks).
 
 ## Commands
 
@@ -21,9 +21,8 @@ cmd/kapso-whatsapp-bridge/main.go     # Daemon entrypoint
 cmd/kapso-whatsapp-cli/main.go        # CLI entrypoint
 internal/config/                      # TOML + env config (3-tier: defaults < file < env)
 internal/kapso/                       # Kapso HTTP client + webhook types
-internal/gateway/                     # WebSocket client to OpenClaw
+internal/gateway/                     # Gateway interface + implementations (OpenClaw, ZeroClaw)
 internal/delivery/                    # Message source abstraction (poller + webhook)
-internal/relay/                       # Polls agent session JSONL, sends replies back
 internal/security/                    # Allowlist, rate limiting, roles, session isolation
 internal/tailscale/                   # Auto Tailscale Funnel for webhooks
 nix/module.nix                        # Home-manager module (NixOS users)
@@ -37,7 +36,7 @@ skills/whatsapp/SKILL.md              # Agent skill definition
 - Table-driven tests with dependency injection (e.g., mockable `now()`)
 - Errors wrapped with `fmt.Errorf` for context
 - Context-based cancellation for all goroutines
-- Interfaces for extensibility (`delivery.Source`)
+- Interfaces for extensibility (`delivery.Source`, `gateway.Gateway`)
 - No globals — all state in structs
 - CGO disabled in builds
 
@@ -50,4 +49,5 @@ skills/whatsapp/SKILL.md              # Agent skill definition
 
 Config file: `~/.config/kapso-whatsapp/config.toml`
 Required env vars: `KAPSO_API_KEY`, `KAPSO_PHONE_NUMBER_ID`
+Gateway types: `openclaw` (default), `zeroclaw` — set via `type` in `[gateway]` or `GATEWAY_TYPE` env var
 Delivery modes: `polling` (default), `tailscale`, `domain`
