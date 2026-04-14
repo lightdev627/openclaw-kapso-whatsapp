@@ -20,7 +20,8 @@ type ZeroClaw struct {
 	token string
 
 	conn *websocket.Conn
-	mu   sync.Mutex
+	mu   sync.Mutex // guards conn field
+	ioMu sync.Mutex // serialises write+read cycles on conn
 }
 
 // NewZeroClaw creates a ZeroClaw gateway from config.
@@ -67,6 +68,9 @@ func (zc *ZeroClaw) SendAndReceive(ctx context.Context, req *Request) (string, e
 	}
 	conn := zc.conn
 	zc.mu.Unlock()
+
+	zc.ioMu.Lock()
+	defer zc.ioMu.Unlock()
 
 	// Send message — ZeroClaw takes raw text content.
 	msg := map[string]string{
@@ -127,7 +131,9 @@ func (zc *ZeroClaw) Close() error {
 	defer zc.mu.Unlock()
 
 	if zc.conn != nil {
-		return zc.conn.Close()
+		err := zc.conn.Close()
+		zc.conn = nil
+		return err
 	}
 	return nil
 }

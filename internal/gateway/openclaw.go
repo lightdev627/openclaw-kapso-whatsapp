@@ -81,6 +81,10 @@ type chatSendParams struct {
 // Overridden at build time via -ldflags.
 var Version = "dev"
 
+// maxClaimed caps the replyTracker map size. Entries older than this many
+// replies are irrelevant for dedup — the polling window is 10 min.
+const maxClaimed = 1000
+
 // replyTracker prevents concurrent relay goroutines from claiming the same
 // assistant reply in the session JSONL.
 type replyTracker struct {
@@ -97,6 +101,9 @@ func (rt *replyTracker) claim(key string) bool {
 	defer rt.mu.Unlock()
 	if rt.claimed[key] {
 		return false
+	}
+	if len(rt.claimed) >= maxClaimed {
+		rt.claimed = make(map[string]bool)
 	}
 	rt.claimed[key] = true
 	return true
@@ -154,7 +161,7 @@ func (oc *OpenClaw) Connect(ctx context.Context) error {
 		HandshakeTimeout: 10 * time.Second,
 	}
 
-	conn, _, err := dialer.Dial(oc.url, nil)
+	conn, _, err := dialer.DialContext(ctx, oc.url, nil)
 	if err != nil {
 		return fmt.Errorf("connect to gateway: %w", err)
 	}
@@ -169,7 +176,7 @@ func (oc *OpenClaw) Connect(ctx context.Context) error {
 		return fmt.Errorf("read challenge: %w", err)
 	}
 
-	log.Printf("received challenge from gateway: %s", string(msg))
+	log.Printf("received challenge from gateway (%d bytes)", len(msg))
 
 	// Parse challenge to extract nonce for device signing.
 	var challenge struct {
@@ -255,7 +262,7 @@ func (oc *OpenClaw) Connect(ctx context.Context) error {
 		return fmt.Errorf("read connect response: %w", err)
 	}
 
-	log.Printf("connect response: %s", string(msg))
+	log.Printf("received connect response (%d bytes)", len(msg))
 
 	var resp responseFrame
 	if err := json.Unmarshal(msg, &resp); err != nil {
@@ -294,7 +301,7 @@ func (oc *OpenClaw) drain() {
 		if err != nil {
 			return
 		}
-		log.Printf("gateway event: %s", string(msg))
+		log.Printf("gateway event (%d bytes)", len(msg))
 	}
 }
 
@@ -389,7 +396,9 @@ func (oc *OpenClaw) Close() error {
 	defer oc.mu.Unlock()
 
 	if oc.conn != nil {
-		return oc.conn.Close()
+		err := oc.conn.Close()
+		oc.conn = nil
+		return err
 	}
 	return nil
 }
