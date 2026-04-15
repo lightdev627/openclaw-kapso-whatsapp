@@ -18,6 +18,7 @@ let
       url = cfg.gateway.url;
       session_key = cfg.gateway.sessionKey;
       sessions_json = cfg.gateway.sessionsJson;
+      error_message = cfg.gateway.errorMessage;
     };
     state = {
       dir = cfg.state.dir;
@@ -165,6 +166,12 @@ in {
         type = types.str;
         default = "${config.home.homeDirectory}/.openclaw/agents/main/sessions/sessions.json";
         description = "Path to the sessions JSON file (OpenClaw only).";
+      };
+
+      errorMessage = mkOption {
+        type = types.str;
+        default = "Sorry, I ran into an issue processing your message. Please try again in a moment.";
+        description = "Message sent to WhatsApp when the agent fails to produce a reply.";
       };
     };
 

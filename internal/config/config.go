@@ -79,6 +79,7 @@ type GatewayConfig struct {
 	Token        string `toml:"token"`
 	SessionKey   string `toml:"session_key"`   // OpenClaw only
 	SessionsJSON string `toml:"sessions_json"` // OpenClaw only
+	ErrorMessage string `toml:"error_message"` // sent to WhatsApp when agent fails
 }
 
 type StateConfig struct {
@@ -109,6 +110,7 @@ func defaults() Config {
 			URL:          "ws://127.0.0.1:18789",
 			SessionKey:   "main",
 			SessionsJSON: filepath.Join(home, ".openclaw", "agents", "main", "sessions", "sessions.json"),
+			ErrorMessage: "Sorry, I ran into an issue processing your message. Please try again in a moment.",
 		},
 		State: StateConfig{
 			Dir: filepath.Join(home, ".config", "kapso-whatsapp"),
@@ -215,6 +217,9 @@ func applyEnv(cfg *Config) {
 	}
 	if v := os.Getenv("OPENCLAW_SESSIONS_JSON"); v != "" {
 		cfg.Gateway.SessionsJSON = v
+	}
+	if v := os.Getenv("GATEWAY_ERROR_MESSAGE"); v != "" {
+		cfg.Gateway.ErrorMessage = v
 	}
 
 	if v := os.Getenv("KAPSO_STATE_DIR"); v != "" {

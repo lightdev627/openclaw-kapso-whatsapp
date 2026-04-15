@@ -170,7 +170,7 @@ func main() {
 			}
 
 			// Forward to gateway and wait for agent reply in a goroutine.
-			go handleMessage(ctx, gw, client, evt, sessionKey, role)
+			go handleMessage(ctx, gw, client, evt, sessionKey, role, cfg.Gateway.ErrorMessage)
 		}
 	}()
 
@@ -252,7 +252,7 @@ func handleCommand(ctx context.Context, d *commands.Dispatcher, gw gateway.Gatew
 
 // handleMessage sends a message to the gateway, waits for the agent's reply,
 // and sends it back to the WhatsApp sender.
-func handleMessage(ctx context.Context, gw gateway.Gateway, client *kapso.Client, evt delivery.Event, sessionKey, role string) {
+func handleMessage(ctx context.Context, gw gateway.Gateway, client *kapso.Client, evt delivery.Event, sessionKey, role, errorMessage string) {
 	from := evt.From
 	if !strings.HasPrefix(from, "+") {
 		from = "+" + from
@@ -299,6 +299,14 @@ func handleMessage(ctx context.Context, gw gateway.Gateway, client *kapso.Client
 
 	if err != nil {
 		log.Printf("error getting agent reply for %s: %v", evt.ID, err)
+		if errorMessage != "" {
+			if _, sendErr := client.SendText(from, errorMessage); sendErr != nil {
+				log.Printf("relay: failed to send error message to %s: %v", from, sendErr)
+			}
+		}
+		if markErr := client.MarkRead(evt.ID); markErr != nil {
+			log.Printf("relay: failed to dismiss typing for %s: %v", evt.ID, markErr)
+		}
 		return
 	}
 
