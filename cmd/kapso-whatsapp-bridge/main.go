@@ -283,7 +283,10 @@ func handleMessage(ctx context.Context, gw gateway.Gateway, client *kapso.Client
 
 	log.Printf("forwarded message %s from %s [role: %s, session: %s]", evt.ID, evt.From, role, sessionKey)
 
-	reply, err := gw.SendAndReceive(ctx, &gateway.Request{
+	msgCtx, msgCancel := context.WithTimeout(ctx, 10*time.Minute)
+	defer msgCancel()
+
+	reply, err := gw.SendAndReceive(msgCtx, &gateway.Request{
 		SessionKey:     sessionKey,
 		IdempotencyKey: evt.ID,
 		From:           evt.From,
