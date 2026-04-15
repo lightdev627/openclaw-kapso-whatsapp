@@ -389,7 +389,11 @@ in {
   };
 
   config = mkIf cfg.enable {
-    home.packages = [ cfg.cliPackage ];
+    home.packages = [
+      (pkgs.writeShellScriptBin "kapso-whatsapp-cli" ''
+        exec ${loadSecrets} ${cfg.cliPackage}/bin/kapso-whatsapp-cli "$@"
+      '')
+    ];
 
     home.file.".config/kapso-whatsapp/config.toml".source = configToml;
 
