@@ -41,11 +41,11 @@ func Run(cfg *config.Config, w io.Writer, opts *Options) error {
 
 	hasFail := false
 	for _, r := range results {
-		fmt.Fprintf(w, "  [%-4s]  %s", r.Status, r.Name)
+		_, _ = fmt.Fprintf(w, "  [%-4s]  %s", r.Status, r.Name)
 		if r.Detail != "" {
-			fmt.Fprintf(w, " -- %s", r.Detail)
+			_, _ = fmt.Fprintf(w, " -- %s", r.Detail)
 		}
-		fmt.Fprintln(w)
+		_, _ = fmt.Fprintln(w)
 		if r.Status == "FAIL" {
 			hasFail = true
 		}

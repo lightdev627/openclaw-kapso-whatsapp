@@ -25,7 +25,7 @@ func newTestConfig(apiKey, phoneID, gatewayURL string) *config.Config {
 func mockKapsoServer(statusCode int) *httptest.Server {
 	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(statusCode)
-		fmt.Fprint(w, `{"data":[]}`)
+		_, _ = fmt.Fprint(w, `{"data":[]}`)
 	}))
 }
 
