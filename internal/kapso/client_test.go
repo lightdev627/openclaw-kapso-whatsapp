@@ -143,7 +143,42 @@ func TestMarkReadWithTyping(t *testing.T) {
 	})
 }
 
+func TestSanitizeMediaURL(t *testing.T) {
+	tests := []struct {
+		name    string
+		url     string
+		wantErr bool
+	}{
+		{"allowed kapso host", "https://media.kapso.ai/files/audio.ogg", false},
+		{"allowed whatsapp host", "https://mmg.whatsapp.net/v/audio.ogg", false},
+		{"allowed fbcdn host", "https://scontent.fbcdn.net/v/audio.ogg", false},
+		{"bare kapso domain", "https://kapso.ai/files/audio.ogg", false},
+		{"HTTP scheme rejected", "http://media.kapso.ai/files/audio.ogg", true},
+		{"disallowed host", "https://evil.example.com/audio.ogg", true},
+		{"localhost rejected", "https://localhost/secret", true},
+		{"IP address rejected", "https://127.0.0.1/secret", true},
+		{"empty string", "", true},
+		{"no scheme", "media.kapso.ai/audio.ogg", true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			u, err := sanitizeMediaURL(tt.url)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("sanitizeMediaURL(%q) error = %v, wantErr %v", tt.url, err, tt.wantErr)
+			}
+			if err == nil && u.String() != tt.url {
+				t.Errorf("sanitizeMediaURL(%q).String() = %q, want round-trip", tt.url, u.String())
+			}
+		})
+	}
+}
+
 func TestDownloadMedia(t *testing.T) {
+	// All DownloadMedia tests use an allowed HTTPS URL; the rewriteTransport
+	// redirects the actual request to the local test server.
+	const allowedURL = "https://media.kapso.ai/audio.ogg"
+
 	t.Run("under limit returns full body", func(t *testing.T) {
 		body := []byte("hello audio data")
 		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -158,7 +193,7 @@ func TestDownloadMedia(t *testing.T) {
 			HTTPClient:    &http.Client{Transport: &rewriteTransport{base: srv.URL, wrapped: http.DefaultTransport}},
 		}
 
-		got, err := client.DownloadMedia("http://example.com/media/audio.ogg", int64(len(body)+100))
+		got, err := client.DownloadMedia(allowedURL, int64(len(body)+100))
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -181,7 +216,7 @@ func TestDownloadMedia(t *testing.T) {
 			HTTPClient:    &http.Client{Transport: &rewriteTransport{base: srv.URL, wrapped: http.DefaultTransport}},
 		}
 
-		got, err := client.DownloadMedia("http://example.com/media/audio.ogg", int64(len(body)))
+		got, err := client.DownloadMedia(allowedURL, int64(len(body)))
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -191,7 +226,6 @@ func TestDownloadMedia(t *testing.T) {
 	})
 
 	t.Run("exceeds limit by 1 byte returns size limit error", func(t *testing.T) {
-		// Write maxBytes+1 bytes of data in the response.
 		maxBytes := int64(10)
 		body := make([]byte, maxBytes+1)
 		for i := range body {
@@ -210,7 +244,7 @@ func TestDownloadMedia(t *testing.T) {
 			HTTPClient:    &http.Client{Transport: &rewriteTransport{base: srv.URL, wrapped: http.DefaultTransport}},
 		}
 
-		_, err := client.DownloadMedia("http://example.com/media/audio.ogg", maxBytes)
+		_, err := client.DownloadMedia(allowedURL, maxBytes)
 		if err == nil {
 			t.Fatal("expected size limit error, got nil")
 		}
@@ -235,7 +269,7 @@ func TestDownloadMedia(t *testing.T) {
 			HTTPClient:    &http.Client{Transport: &rewriteTransport{base: srv.URL, wrapped: http.DefaultTransport}},
 		}
 
-		_, err := client.DownloadMedia("http://example.com/media/audio.ogg", 1024)
+		_, err := client.DownloadMedia(allowedURL, 1024)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -257,12 +291,28 @@ func TestDownloadMedia(t *testing.T) {
 			HTTPClient:    &http.Client{Transport: &rewriteTransport{base: srv.URL, wrapped: http.DefaultTransport}},
 		}
 
-		_, err := client.DownloadMedia("http://example.com/media/audio.ogg", 1024)
+		_, err := client.DownloadMedia(allowedURL, 1024)
 		if err == nil {
 			t.Fatal("expected error for non-200 status, got nil")
 		}
 		if !strings.Contains(err.Error(), "403") {
 			t.Errorf("error %q does not contain status code 403", err.Error())
+		}
+	})
+
+	t.Run("disallowed URL rejected before HTTP request", func(t *testing.T) {
+		client := &Client{
+			APIKey:        "test-key",
+			PhoneNumberID: "12345",
+			HTTPClient:    http.DefaultClient,
+		}
+
+		_, err := client.DownloadMedia("https://evil.example.com/steal", 1024)
+		if err == nil {
+			t.Fatal("expected error for disallowed URL, got nil")
+		}
+		if !strings.Contains(err.Error(), "not in the allowed list") {
+			t.Errorf("error %q does not mention allowed list", err.Error())
 		}
 	})
 }
