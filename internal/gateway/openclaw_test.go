@@ -459,6 +459,409 @@ func TestConnectWithSignerButNoNonceErrors(t *testing.T) {
 	}
 }
 
+// TestGetSessionFileFallsBackToBaseKey verifies that when a per-sender
+// session key is not in sessions.json, the base key is found instead.
+func TestGetSessionFileFallsBackToBaseKey(t *testing.T) {
+	dir := t.TempDir()
+	sessionsJSON := filepath.Join(dir, "sessions.json")
+
+	data := `{"agent:main:main": {"sessionFile": "/tmp/main.jsonl"}}`
+	if err := os.WriteFile(sessionsJSON, []byte(data), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	// Per-sender key should NOT be found.
+	_, err := getSessionFile(sessionsJSON, "main-wa-91234567890")
+	if err == nil {
+		t.Fatal("expected error for per-sender key, got nil")
+	}
+
+	// Base key should be found.
+	sf, err := getSessionFile(sessionsJSON, "main")
+	if err != nil {
+		t.Fatalf("expected base key lookup to succeed: %v", err)
+	}
+	if sf != "/tmp/main.jsonl" {
+		t.Fatalf("expected /tmp/main.jsonl, got %s", sf)
+	}
+}
+
+// TestGetSessionFilePerSenderKeyFound verifies that when sessions.json
+// contains a per-sender session entry, it is returned directly.
+func TestGetSessionFilePerSenderKeyFound(t *testing.T) {
+	dir := t.TempDir()
+	sessionsJSON := filepath.Join(dir, "sessions.json")
+
+	data := `{
+		"agent:main:main": {"sessionFile": "/tmp/main.jsonl"},
+		"agent:main-wa-91234567890:main-wa-91234567890": {"sessionFile": "/tmp/sender.jsonl"}
+	}`
+	if err := os.WriteFile(sessionsJSON, []byte(data), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	sf, err := getSessionFile(sessionsJSON, "main-wa-91234567890")
+	if err != nil {
+		t.Fatalf("expected per-sender key lookup to succeed: %v", err)
+	}
+	if sf != "/tmp/sender.jsonl" {
+		t.Fatalf("expected /tmp/sender.jsonl, got %s", sf)
+	}
+}
+
+// ocTestServer creates a test WebSocket server that performs the OpenClaw
+// handshake and then calls handler for each subsequent request frame.
+// The handler receives the parsed request and returns a result or error to send.
+func ocTestServer(t *testing.T, handler func(req requestFrame) responseFrame) (*httptest.Server, string) {
+	t.Helper()
+	var upgrader = websocket.Upgrader{}
+	done := make(chan struct{})
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		conn, err := upgrader.Upgrade(w, r, nil)
+		if err != nil {
+			return
+		}
+		defer func() { _ = conn.Close() }()
+
+		// Send challenge.
+		challenge := `{"type":"event","method":"challenge"}`
+		if err := conn.WriteMessage(websocket.TextMessage, []byte(challenge)); err != nil {
+			return
+		}
+
+		// Read connect request.
+		_, msg, err := conn.ReadMessage()
+		if err != nil {
+			return
+		}
+
+		// Parse connect to get the ID, send OK response.
+		var connectReq requestFrame
+		_ = json.Unmarshal(msg, &connectReq)
+		resp := fmt.Sprintf(`{"type":"res","id":%q,"result":{"ok":true}}`, connectReq.ID)
+		if err := conn.WriteMessage(websocket.TextMessage, []byte(resp)); err != nil {
+			return
+		}
+
+		// Handle subsequent requests.
+		for {
+			select {
+			case <-done:
+				return
+			default:
+			}
+
+			_, msg, err := conn.ReadMessage()
+			if err != nil {
+				return
+			}
+
+			var req requestFrame
+			if err := json.Unmarshal(msg, &req); err != nil {
+				continue
+			}
+
+			respFrame := handler(req)
+			respFrame.Type = "res"
+			respFrame.ID = req.ID
+			data, _ := json.Marshal(respFrame)
+			if err := conn.WriteMessage(websocket.TextMessage, data); err != nil {
+				return
+			}
+		}
+	}))
+
+	t.Cleanup(func() {
+		close(done)
+		srv.Close()
+	})
+
+	wsURL := "ws" + strings.TrimPrefix(srv.URL, "http")
+	return srv, wsURL
+}
+
+// TestSendRequestRoutesResponseByID verifies that concurrent sendRequest
+// calls each receive their own response, matched by request ID.
+func TestSendRequestRoutesResponseByID(t *testing.T) {
+	_, wsURL := ocTestServer(t, func(req requestFrame) responseFrame {
+		return responseFrame{
+			Result: json.RawMessage(fmt.Sprintf(`{"echo":%q}`, req.ID)),
+		}
+	})
+
+	client := newTestOpenClaw(wsURL, "test-token", nil)
+	if err := client.Connect(context.Background()); err != nil {
+		t.Fatalf("Connect: %v", err)
+	}
+	defer func() { _ = client.Close() }()
+
+	const n = 3
+	results := make([]string, n)
+	errs := make([]error, n)
+	var wg sync.WaitGroup
+	wg.Add(n)
+
+	for i := 0; i < n; i++ {
+		i := i
+		go func() {
+			defer wg.Done()
+			resp, err := client.sendRequest(context.Background(), "test.echo", map[string]int{"i": i})
+			errs[i] = err
+			if err == nil {
+				results[i] = string(resp.Result)
+			}
+		}()
+	}
+	wg.Wait()
+
+	for i := 0; i < n; i++ {
+		if errs[i] != nil {
+			t.Errorf("goroutine %d: %v", i, errs[i])
+			continue
+		}
+		// Each result should contain the request ID that was echoed back.
+		if results[i] == "" {
+			t.Errorf("goroutine %d: empty result", i)
+		}
+	}
+}
+
+// TestSendRequestReturnsErrorOnGatewayReject verifies that when the gateway
+// responds with an error frame, sendRequest returns it in the response.
+func TestSendRequestReturnsErrorOnGatewayReject(t *testing.T) {
+	_, wsURL := ocTestServer(t, func(req requestFrame) responseFrame {
+		return responseFrame{
+			Error: json.RawMessage(`{"message":"session not found"}`),
+		}
+	})
+
+	client := newTestOpenClaw(wsURL, "test-token", nil)
+	if err := client.Connect(context.Background()); err != nil {
+		t.Fatalf("Connect: %v", err)
+	}
+	defer func() { _ = client.Close() }()
+
+	resp, err := client.sendRequest(context.Background(), "chat.send", chatSendParams{
+		SessionKey: "main-wa-test",
+		Message:    "hello",
+	})
+	if err != nil {
+		t.Fatalf("sendRequest returned transport error: %v", err)
+	}
+	if resp.Error == nil {
+		t.Fatal("expected error in response, got nil")
+	}
+	if !strings.Contains(string(resp.Error), "session not found") {
+		t.Errorf("expected 'session not found' in error, got: %s", string(resp.Error))
+	}
+}
+
+// TestSendRequestUnblocksOnConnectionClose verifies that sendRequest returns
+// an error when the server closes the connection, rather than hanging.
+func TestSendRequestUnblocksOnConnectionClose(t *testing.T) {
+	var upgrader = websocket.Upgrader{}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		conn, err := upgrader.Upgrade(w, r, nil)
+		if err != nil {
+			return
+		}
+
+		// Handshake.
+		challenge := `{"type":"event","method":"challenge"}`
+		_ = conn.WriteMessage(websocket.TextMessage, []byte(challenge))
+		_, msg, _ := conn.ReadMessage()
+		var req requestFrame
+		_ = json.Unmarshal(msg, &req)
+		resp := fmt.Sprintf(`{"type":"res","id":%q,"result":{"ok":true}}`, req.ID)
+		_ = conn.WriteMessage(websocket.TextMessage, []byte(resp))
+
+		// Read the chat.send request but close without responding.
+		_, _, _ = conn.ReadMessage()
+		_ = conn.Close()
+	}))
+	defer srv.Close()
+
+	wsURL := "ws" + strings.TrimPrefix(srv.URL, "http")
+	client := newTestOpenClaw(wsURL, "test-token", nil)
+	if err := client.Connect(context.Background()); err != nil {
+		t.Fatalf("Connect: %v", err)
+	}
+	defer func() { _ = client.Close() }()
+
+	_, err := client.sendRequest(context.Background(), "chat.send", chatSendParams{
+		SessionKey: "main",
+		Message:    "hello",
+	})
+	if err == nil {
+		t.Fatal("expected error when connection closed, got nil")
+	}
+	if !strings.Contains(err.Error(), "connection closed") {
+		t.Errorf("expected 'connection closed' error, got: %v", err)
+	}
+}
+
+// TestSendAndReceiveDetectsGatewayError verifies that SendAndReceive returns
+// immediately with an error when the gateway rejects chat.send, without
+// entering the file-polling loop.
+func TestSendAndReceiveDetectsGatewayError(t *testing.T) {
+	_, wsURL := ocTestServer(t, func(req requestFrame) responseFrame {
+		return responseFrame{
+			Error: json.RawMessage(`{"message":"unauthorized"}`),
+		}
+	})
+
+	client := newTestOpenClaw(wsURL, "test-token", nil)
+	if err := client.Connect(context.Background()); err != nil {
+		t.Fatalf("Connect: %v", err)
+	}
+	defer func() { _ = client.Close() }()
+
+	_, err := client.SendAndReceive(context.Background(), &Request{
+		SessionKey: "main",
+		Text:       "hello",
+		From:       "+1234567890",
+		FromName:   "Test",
+		Role:       "admin",
+	})
+	if err == nil {
+		t.Fatal("expected error from rejected chat.send")
+	}
+	if !strings.Contains(err.Error(), "unauthorized") {
+		t.Errorf("expected 'unauthorized' in error, got: %v", err)
+	}
+}
+
+// TestReadLoopRoutesAroundEvents verifies that unsolicited event frames
+// do not interfere with response routing.
+func TestReadLoopRoutesAroundEvents(t *testing.T) {
+	var upgrader = websocket.Upgrader{}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		conn, err := upgrader.Upgrade(w, r, nil)
+		if err != nil {
+			return
+		}
+		defer func() { _ = conn.Close() }()
+
+		// Handshake.
+		challenge := `{"type":"event","method":"challenge"}`
+		_ = conn.WriteMessage(websocket.TextMessage, []byte(challenge))
+		_, msg, _ := conn.ReadMessage()
+		var creq requestFrame
+		_ = json.Unmarshal(msg, &creq)
+		resp := fmt.Sprintf(`{"type":"res","id":%q,"result":{"ok":true}}`, creq.ID)
+		_ = conn.WriteMessage(websocket.TextMessage, []byte(resp))
+
+		// Read the request, send an event first, then the actual response.
+		_, msg, err = conn.ReadMessage()
+		if err != nil {
+			return
+		}
+		var req requestFrame
+		_ = json.Unmarshal(msg, &req)
+
+		// Interleaved event.
+		event := `{"type":"event","method":"status.update","params":{"status":"processing"}}`
+		_ = conn.WriteMessage(websocket.TextMessage, []byte(event))
+
+		// Actual response.
+		res := fmt.Sprintf(`{"type":"res","id":%q,"result":{"ok":true}}`, req.ID)
+		_ = conn.WriteMessage(websocket.TextMessage, []byte(res))
+
+		// Keep alive until test closes.
+		for {
+			if _, _, err := conn.ReadMessage(); err != nil {
+				return
+			}
+		}
+	}))
+	defer srv.Close()
+
+	wsURL := "ws" + strings.TrimPrefix(srv.URL, "http")
+	client := newTestOpenClaw(wsURL, "test-token", nil)
+	if err := client.Connect(context.Background()); err != nil {
+		t.Fatalf("Connect: %v", err)
+	}
+	defer func() { _ = client.Close() }()
+
+	resp, err := client.sendRequest(context.Background(), "chat.send", chatSendParams{
+		SessionKey: "main",
+		Message:    "hello",
+	})
+	if err != nil {
+		t.Fatalf("sendRequest failed: %v", err)
+	}
+	if resp.Error != nil {
+		t.Fatalf("unexpected error in response: %s", string(resp.Error))
+	}
+}
+
+// TestCloseUnblocksPendingSendRequest verifies that calling Close() while
+// a sendRequest is waiting causes sendRequest to return an error, and
+// Close() itself does not deadlock.
+func TestCloseUnblocksPendingSendRequest(t *testing.T) {
+	var upgrader = websocket.Upgrader{}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		conn, err := upgrader.Upgrade(w, r, nil)
+		if err != nil {
+			return
+		}
+		defer func() { _ = conn.Close() }()
+
+		// Handshake.
+		challenge := `{"type":"event","method":"challenge"}`
+		_ = conn.WriteMessage(websocket.TextMessage, []byte(challenge))
+		_, msg, _ := conn.ReadMessage()
+		var req requestFrame
+		_ = json.Unmarshal(msg, &req)
+		resp := fmt.Sprintf(`{"type":"res","id":%q,"result":{"ok":true}}`, req.ID)
+		_ = conn.WriteMessage(websocket.TextMessage, []byte(resp))
+
+		// Read requests but never respond — simulate a hung gateway.
+		for {
+			if _, _, err := conn.ReadMessage(); err != nil {
+				return
+			}
+		}
+	}))
+	defer srv.Close()
+
+	wsURL := "ws" + strings.TrimPrefix(srv.URL, "http")
+	client := newTestOpenClaw(wsURL, "test-token", nil)
+	if err := client.Connect(context.Background()); err != nil {
+		t.Fatalf("Connect: %v", err)
+	}
+
+	errCh := make(chan error, 1)
+	go func() {
+		_, err := client.sendRequest(context.Background(), "chat.send", chatSendParams{
+			SessionKey: "main",
+			Message:    "hello",
+		})
+		errCh <- err
+	}()
+
+	// Give sendRequest time to register and block.
+	time.Sleep(50 * time.Millisecond)
+
+	// Close should unblock the pending sendRequest.
+	if err := client.Close(); err != nil {
+		t.Fatalf("Close: %v", err)
+	}
+
+	select {
+	case err := <-errCh:
+		if err == nil {
+			t.Fatal("expected error from sendRequest after Close, got nil")
+		}
+		if !strings.Contains(err.Error(), "connection closed") {
+			t.Errorf("expected 'connection closed' error, got: %v", err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("sendRequest did not unblock after Close — deadlock")
+	}
+}
+
 // TestConcurrentClaimsUniqueReplies verifies that when multiple goroutines
 // race to read the same session JSONL file, each one claims a different
 // assistant reply.
