@@ -459,6 +459,56 @@ func TestConnectWithSignerButNoNonceErrors(t *testing.T) {
 	}
 }
 
+// TestGetSessionFileFallsBackToBaseKey verifies that when a per-sender
+// session key is not in sessions.json, the base key is found instead.
+func TestGetSessionFileFallsBackToBaseKey(t *testing.T) {
+	dir := t.TempDir()
+	sessionsJSON := filepath.Join(dir, "sessions.json")
+
+	data := `{"agent:main:main": {"sessionFile": "/tmp/main.jsonl"}}`
+	if err := os.WriteFile(sessionsJSON, []byte(data), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	// Per-sender key should NOT be found.
+	_, err := getSessionFile(sessionsJSON, "main-wa-91234567890")
+	if err == nil {
+		t.Fatal("expected error for per-sender key, got nil")
+	}
+
+	// Base key should be found.
+	sf, err := getSessionFile(sessionsJSON, "main")
+	if err != nil {
+		t.Fatalf("expected base key lookup to succeed: %v", err)
+	}
+	if sf != "/tmp/main.jsonl" {
+		t.Fatalf("expected /tmp/main.jsonl, got %s", sf)
+	}
+}
+
+// TestGetSessionFilePerSenderKeyFound verifies that when sessions.json
+// contains a per-sender session entry, it is returned directly.
+func TestGetSessionFilePerSenderKeyFound(t *testing.T) {
+	dir := t.TempDir()
+	sessionsJSON := filepath.Join(dir, "sessions.json")
+
+	data := `{
+		"agent:main:main": {"sessionFile": "/tmp/main.jsonl"},
+		"agent:main-wa-91234567890:main-wa-91234567890": {"sessionFile": "/tmp/sender.jsonl"}
+	}`
+	if err := os.WriteFile(sessionsJSON, []byte(data), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	sf, err := getSessionFile(sessionsJSON, "main-wa-91234567890")
+	if err != nil {
+		t.Fatalf("expected per-sender key lookup to succeed: %v", err)
+	}
+	if sf != "/tmp/sender.jsonl" {
+		t.Fatalf("expected /tmp/sender.jsonl, got %s", sf)
+	}
+}
+
 // TestConcurrentClaimsUniqueReplies verifies that when multiple goroutines
 // race to read the same session JSONL file, each one claims a different
 // assistant reply.

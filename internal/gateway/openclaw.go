@@ -359,6 +359,13 @@ func (oc *OpenClaw) SendAndReceive(ctx context.Context, req *Request) (string, e
 	ticker := time.NewTicker(3 * time.Second)
 	defer ticker.Stop()
 
+	// When session isolation produces a per-sender key (e.g. "main-wa-91..."),
+	// OpenClaw may not create a dedicated session file for it — the reply
+	// lands in the base agent session instead. We try the per-sender key
+	// first, then fall back to the base key.
+	useFallback := sessionKey != oc.sessionKey
+	loggedFallback := false
+
 	for {
 		if time.Now().After(deadline) {
 			return "", fmt.Errorf("timeout waiting for agent reply (session %s)", sessionKey)
@@ -371,6 +378,13 @@ func (oc *OpenClaw) SendAndReceive(ctx context.Context, req *Request) (string, e
 		}
 
 		sessionFile, err := getSessionFile(oc.sessionsJSON, sessionKey)
+		if err != nil && useFallback {
+			sessionFile, err = getSessionFile(oc.sessionsJSON, oc.sessionKey)
+			if err == nil && !loggedFallback {
+				log.Printf("openclaw: per-sender session %q not found, using base session %q", sessionKey, oc.sessionKey)
+				loggedFallback = true
+			}
+		}
 		if err != nil {
 			log.Printf("openclaw: %v", err)
 			continue
