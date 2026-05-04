@@ -3,4 +3,4 @@ extensions:
       pack: codeql/go-all
       extensible: neutralModel
     data:
-      - ["github.com/Enriquefft/openclaw-kapso-whatsapp/internal/kapso", "", "sanitizeMediaURL", "summary", "manual"]
+      - ["github.com/Enriquefft/openclaw-kapso-whatsapp/internal/kapso", "", "sanitizeMediaURL", "", "summary", "manual"]
