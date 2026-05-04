@@ -123,9 +123,14 @@ type OpenClaw struct {
 	sessionKey   string
 
 	conn    *websocket.Conn
-	mu      sync.Mutex
+	mu      sync.Mutex // guards conn, seq, and writes
 	seq     int
 	tracker *replyTracker
+
+	// Response routing: readLoop routes "res" frames to pending callers.
+	pending map[string]chan responseFrame
+	pendMu  sync.Mutex    // guards pending map (separate from mu)
+	done    chan struct{} // closed when readLoop exits
 }
 
 // NewOpenClaw creates an OpenClaw gateway from config.
@@ -280,16 +285,30 @@ func (oc *OpenClaw) Connect(ctx context.Context) error {
 	// Clear deadline for normal operation.
 	_ = conn.SetReadDeadline(time.Time{})
 
-	// Drain unsolicited gateway events in the background so the socket
-	// buffer never fills up and write operations don't stall.
-	go oc.drain()
+	// Initialize response routing for the new connection.
+	oc.pending = make(map[string]chan responseFrame)
+	oc.done = make(chan struct{})
+	go oc.readLoop()
 
 	log.Printf("authenticated with gateway at %s", oc.url)
 	return nil
 }
 
-// drain reads and discards all incoming frames from the gateway.
-func (oc *OpenClaw) drain() {
+// readLoop reads incoming frames and routes "res" frames to pending callers.
+// All other frames (events) are logged for observability. This is the sole
+// goroutine that reads from the WebSocket connection.
+func (oc *OpenClaw) readLoop() {
+	defer func() {
+		// Signal all pending sendRequest callers that the connection is gone.
+		oc.pendMu.Lock()
+		for id, ch := range oc.pending {
+			close(ch)
+			delete(oc.pending, id)
+		}
+		oc.pendMu.Unlock()
+		close(oc.done)
+	}()
+
 	for {
 		oc.mu.Lock()
 		conn := oc.conn
@@ -297,44 +316,87 @@ func (oc *OpenClaw) drain() {
 		if conn == nil {
 			return
 		}
+
 		_, msg, err := conn.ReadMessage()
 		if err != nil {
 			return
 		}
-		log.Printf("gateway event (%d bytes)", len(msg))
+
+		var frame responseFrame
+		if err := json.Unmarshal(msg, &frame); err != nil {
+			log.Printf("openclaw: ignoring unparseable frame (%d bytes)", len(msg))
+			continue
+		}
+
+		// Route responses to waiting callers by request ID.
+		if frame.Type == "res" && frame.ID != "" {
+			oc.pendMu.Lock()
+			if ch, ok := oc.pending[frame.ID]; ok {
+				ch <- frame
+				delete(oc.pending, frame.ID)
+			}
+			oc.pendMu.Unlock()
+			continue
+		}
+
+		log.Printf("gateway event: type=%s method=%s (%d bytes)", frame.Type, frame.Method, len(msg))
 	}
 }
 
-// send submits a message to the OpenClaw gateway via chat.send.
-func (oc *OpenClaw) send(sessionKey, idempotencyKey, message string) error {
+// sendRequest sends a request frame and waits for the matching response.
+// The caller gets the full responseFrame so it can inspect Result or Error.
+func (oc *OpenClaw) sendRequest(ctx context.Context, method string, params interface{}) (responseFrame, error) {
+	// Write phase — hold mu for conn check, ID generation, and write.
 	oc.mu.Lock()
-	defer oc.mu.Unlock()
-
 	if oc.conn == nil {
-		return fmt.Errorf("not connected to gateway")
+		oc.mu.Unlock()
+		return responseFrame{}, fmt.Errorf("not connected to gateway")
 	}
 
+	id := oc.nextID()
 	req := requestFrame{
 		Type:   "req",
-		ID:     oc.nextID(),
-		Method: "chat.send",
-		Params: chatSendParams{
-			SessionKey:     sessionKey,
-			Message:        message,
-			IdempotencyKey: idempotencyKey,
-		},
+		ID:     id,
+		Method: method,
+		Params: params,
 	}
 
 	data, err := json.Marshal(req)
 	if err != nil {
-		return fmt.Errorf("marshal request: %w", err)
+		oc.mu.Unlock()
+		return responseFrame{}, fmt.Errorf("marshal %s request: %w", method, err)
 	}
+
+	// Register response channel before sending so readLoop can't race us.
+	ch := make(chan responseFrame, 1)
+	oc.pendMu.Lock()
+	oc.pending[id] = ch
+	oc.pendMu.Unlock()
 
 	if err := oc.conn.WriteMessage(websocket.TextMessage, data); err != nil {
-		return fmt.Errorf("write message: %w", err)
+		oc.mu.Unlock()
+		oc.pendMu.Lock()
+		delete(oc.pending, id)
+		oc.pendMu.Unlock()
+		return responseFrame{}, fmt.Errorf("send %s: %w", method, err)
 	}
+	oc.mu.Unlock()
 
-	return nil
+	// Wait for readLoop to deliver the response.
+	select {
+	case resp, ok := <-ch:
+		if !ok {
+			return responseFrame{}, fmt.Errorf("connection closed while waiting for %s response", method)
+		}
+		return resp, nil
+	case <-ctx.Done():
+		oc.pendMu.Lock()
+		delete(oc.pending, id)
+		oc.pendMu.Unlock()
+		return responseFrame{}, ctx.Err()
+	case <-oc.done:
+		return responseFrame{}, fmt.Errorf("connection closed while waiting for %s response", method)
+	}
 }
 
 // SendAndReceive sends a message to the OpenClaw gateway and polls the
@@ -349,20 +411,32 @@ func (oc *OpenClaw) SendAndReceive(ctx context.Context, req *Request) (string, e
 		sessionKey = oc.sessionKey
 	}
 
-	if err := oc.send(sessionKey, req.IdempotencyKey, taggedText); err != nil {
-		return "", err
+	// Send message and wait for the gateway's acknowledgement.
+	resp, err := oc.sendRequest(ctx, "chat.send", chatSendParams{
+		SessionKey:     sessionKey,
+		Message:        taggedText,
+		IdempotencyKey: req.IdempotencyKey,
+	})
+	if err != nil {
+		return "", fmt.Errorf("chat.send: %w", err)
+	}
+	if resp.Error != nil {
+		return "", fmt.Errorf("chat.send rejected: %s", string(resp.Error))
 	}
 
-	// Poll the session JSONL for the agent's reply.
+	// Poll session JSONL for the agent's reply.
+	return oc.pollReply(ctx, sessionKey)
+}
+
+// pollReply polls the session JSONL file until an unclaimed assistant reply
+// appears. When session isolation produces a per-sender key that doesn't
+// exist in sessions.json, it falls back to the base session key.
+func (oc *OpenClaw) pollReply(ctx context.Context, sessionKey string) (string, error) {
 	since := time.Now().UTC()
 	deadline := time.Now().Add(10 * time.Minute)
 	ticker := time.NewTicker(3 * time.Second)
 	defer ticker.Stop()
 
-	// When session isolation produces a per-sender key (e.g. "main-wa-91..."),
-	// OpenClaw may not create a dedicated session file for it — the reply
-	// lands in the base agent session instead. We try the per-sender key
-	// first, then fall back to the base key.
 	useFallback := sessionKey != oc.sessionKey
 	loggedFallback := false
 
@@ -404,17 +478,24 @@ func (oc *OpenClaw) SendAndReceive(ctx context.Context, req *Request) (string, e
 	}
 }
 
-// Close closes the WebSocket connection.
+// Close closes the WebSocket connection and waits for readLoop to exit.
 func (oc *OpenClaw) Close() error {
 	oc.mu.Lock()
-	defer oc.mu.Unlock()
-
-	if oc.conn != nil {
-		err := oc.conn.Close()
-		oc.conn = nil
-		return err
+	if oc.conn == nil {
+		oc.mu.Unlock()
+		return nil
 	}
-	return nil
+	err := oc.conn.Close()
+	oc.conn = nil
+	done := oc.done
+	oc.mu.Unlock()
+
+	// Wait for readLoop to finish cleanup. The wait is bounded because
+	// conn.Close() causes ReadMessage() to return an error immediately.
+	if done != nil {
+		<-done
+	}
+	return err
 }
 
 // getSessionFile reads sessions.json and returns the path to the active
