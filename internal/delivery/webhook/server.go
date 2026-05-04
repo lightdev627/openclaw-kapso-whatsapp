@@ -88,6 +88,7 @@ func (s *Server) handleVerification(w http.ResponseWriter, r *http.Request) {
 
 	if mode == "subscribe" && token == s.VerifyToken {
 		log.Printf("webhook verification successful")
+		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 		w.WriteHeader(http.StatusOK)
 		_, _ = fmt.Fprint(w, challenge)
 		return

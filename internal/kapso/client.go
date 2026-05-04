@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
+	"strings"
 )
 
 const baseURL = "https://api.kapso.ai/meta/whatsapp/v24.0"
@@ -133,8 +135,13 @@ func (c *Client) markRead(messageID string, typing *TypingIndicator) error {
 // DownloadMedia downloads raw audio bytes from the given URL, enforcing a
 // maximum response size. The maxBytes limit is applied via io.LimitReader with
 // a +1 sentinel: if the server sends more than maxBytes, an error is returned.
-func (c *Client) DownloadMedia(url string, maxBytes int64) ([]byte, error) {
-	req, err := http.NewRequest("GET", url, nil)
+// Only HTTPS URLs with allowed hostnames are accepted to prevent SSRF.
+func (c *Client) DownloadMedia(rawURL string, maxBytes int64) ([]byte, error) {
+	if err := validateMediaURL(rawURL); err != nil {
+		return nil, fmt.Errorf("invalid media URL: %w", err)
+	}
+
+	req, err := http.NewRequest("GET", rawURL, nil)
 	if err != nil {
 		return nil, fmt.Errorf("create request: %w", err)
 	}
@@ -164,4 +171,32 @@ func (c *Client) DownloadMedia(url string, maxBytes int64) ([]byte, error) {
 	}
 
 	return data, nil
+}
+
+// allowedMediaHosts lists the hostnames that media downloads may target.
+var allowedMediaHosts = []string{
+	".kapso.ai",
+	".whatsapp.net",
+	".fbcdn.net",
+}
+
+// validateMediaURL ensures rawURL is HTTPS and points to an allowed host.
+func validateMediaURL(rawURL string) error {
+	u, err := url.Parse(rawURL)
+	if err != nil {
+		return fmt.Errorf("parse URL: %w", err)
+	}
+
+	if !strings.EqualFold(u.Scheme, "https") {
+		return fmt.Errorf("only HTTPS URLs are allowed, got %q", u.Scheme)
+	}
+
+	host := strings.ToLower(u.Hostname())
+	for _, suffix := range allowedMediaHosts {
+		if host == strings.TrimPrefix(suffix, ".") || strings.HasSuffix(host, suffix) {
+			return nil
+		}
+	}
+
+	return fmt.Errorf("host %q is not in the allowed list", host)
 }
